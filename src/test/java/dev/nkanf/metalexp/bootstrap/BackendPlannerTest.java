@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class BackendPlannerTest {
 
 	@Test
-	void plansBackendFromConfiguration() {
+	void metalFallbackIncludesMetalThenVulkanThenOpenGl() {
 		MetalExpConfig config = new MetalExpConfig(BackendKind.METAL, FailureMode.FALLBACK, true);
 
 		BackendPlan plan = BackendPlanner.plan(config, true);
@@ -22,5 +22,25 @@ class BackendPlannerTest {
 		assertEquals(List.of(BackendKind.METAL, BackendKind.VULKAN, BackendKind.OPENGL), plan.backendsToTry(),
 				"Backends should be tried in the planned order");
 		assertEquals(FailureMode.FALLBACK, plan.failureMode(), "The failure mode should follow the configuration");
+	}
+
+	@Test
+	void metalStrictPreservesStrictModeOnMacOs() {
+		MetalExpConfig config = new MetalExpConfig(BackendKind.METAL, FailureMode.STRICT, true);
+
+		BackendPlan plan = BackendPlanner.plan(config, true);
+
+		assertEquals(List.of(BackendKind.METAL, BackendKind.VULKAN, BackendKind.OPENGL), plan.backendsToTry());
+		assertEquals(FailureMode.STRICT, plan.failureMode());
+	}
+
+	@Test
+	void metalOnNonMacOsFallsBackToOriginalBackends() {
+		MetalExpConfig config = MetalExpConfig.defaults();
+
+		BackendPlan plan = BackendPlanner.plan(config, false);
+
+		assertEquals(List.of(BackendKind.VULKAN, BackendKind.OPENGL), plan.backendsToTry());
+		assertEquals(FailureMode.FALLBACK, plan.failureMode());
 	}
 }
