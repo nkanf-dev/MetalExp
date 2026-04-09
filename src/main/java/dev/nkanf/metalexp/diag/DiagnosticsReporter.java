@@ -10,6 +10,9 @@ public final class DiagnosticsReporter {
 		if (snapshot == null || snapshot.config() == null || snapshot.backendPlan() == null) {
 			return;
 		}
+		if (!snapshot.config().diagnosticsEnabled()) {
+			return;
+		}
 
 		MetalExpMod.LOGGER.info(
 			"MetalExp startup: backend={}, failureMode={}, diagnosticsEnabled={}, plan={}, os={} {}",
