@@ -76,6 +76,7 @@ class MetalBackendBootstrapContextTest {
 		assertEquals(1280, context.drawableWidth());
 		assertEquals(720, context.drawableHeight());
 		assertEquals(2.0D, context.contentsScale());
+		assertEquals(new MetalSurfaceDescriptor(1L, 2L, 42L, 1280, 720, 2.0D), context.surfaceDescriptor());
 		context.close();
 		context.close();
 
