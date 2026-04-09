@@ -1,0 +1,34 @@
+{
+	"schemaVersion": 1,
+	"id": "${mod_id}",
+	"version": "${version}",
+	"name": "${mod_name}",
+	"description": "Experimental Fabric mod scaffold for a native Metal rendering backend project.",
+	"authors": [
+		"nkanf"
+	],
+	"contact": {},
+	"license": "CC0-1.0",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"dev.nkanf.metalexp.MetalExpMod"
+		],
+		"client": [
+			"dev.nkanf.metalexp.client.MetalExpClient"
+		]
+	},
+	"mixins": [
+		"metalexp.mixins.json",
+		{
+			"config": "metalexp.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.18.6",
+		"minecraft": "~26.1.1",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
