@@ -3,7 +3,9 @@
 	"package": "dev.nkanf.metalexp.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
-		"ClientBootstrapMixin"
+		"ClientBootstrapMixin",
+		"VideoSettingsRestartWarningMixin",
+		"VideoSettingsDisplayOptionsMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

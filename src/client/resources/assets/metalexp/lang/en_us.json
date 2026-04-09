@@ -1,0 +1,7 @@
+{
+	"metalexp.options.graphicsApi": "Graphics API (MetalExp)",
+	"metalexp.options.graphicsApi.tooltip": "Select the backend MetalExp will negotiate at startup.",
+	"metalexp.options.graphicsApi.metal": "Metal",
+	"metalexp.options.graphicsApi.vulkan": "Vulkan",
+	"metalexp.options.graphicsApi.opengl": "OpenGL"
+}
