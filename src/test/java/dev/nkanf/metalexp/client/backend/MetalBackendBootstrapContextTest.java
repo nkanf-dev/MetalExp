@@ -40,6 +40,9 @@ class MetalBackendBootstrapContextTest {
 					readyProbe(),
 					new MetalHostSurfaceBootstrap(
 						0L,
+						0,
+						0,
+						0.0D,
 						"Persistent CAMetalLayer attachment did not stick.",
 						List.of("ca_metal_layer_attach"),
 						true,
@@ -68,6 +71,11 @@ class MetalBackendBootstrapContextTest {
 		);
 
 		assertEquals(42L, context.nativeSurfaceHandle());
+		assertEquals(1L, context.cocoaHostSurface().cocoaWindowHandle());
+		assertEquals(2L, context.cocoaHostSurface().cocoaViewHandle());
+		assertEquals(1280, context.drawableWidth());
+		assertEquals(720, context.drawableHeight());
+		assertEquals(2.0D, context.contentsScale());
 		context.close();
 		context.close();
 
@@ -88,6 +96,9 @@ class MetalBackendBootstrapContextTest {
 	private static MetalHostSurfaceBootstrap readyBootstrap(long handle) {
 		return new MetalHostSurfaceBootstrap(
 			handle,
+			1280,
+			720,
+			2.0D,
 			"bootstrapped",
 			List.of(),
 			true,

@@ -116,6 +116,9 @@ class MetalBackendTest {
 				readyProbe("Metal surface probe succeeded."),
 				new MetalHostSurfaceBootstrap(
 					0L,
+					0,
+					0,
+					0.0D,
 					"CAMetalLayer bootstrap failed.",
 					List.of("ca_metal_layer_attach"),
 					true,
@@ -147,6 +150,9 @@ class MetalBackendTest {
 	private static MetalHostSurfaceBootstrap readyBootstrap(String detail, long nativeSurfaceHandle) {
 		return new MetalHostSurfaceBootstrap(
 			nativeSurfaceHandle,
+			1280,
+			720,
+			2.0D,
 			detail,
 			List.of(),
 			true,

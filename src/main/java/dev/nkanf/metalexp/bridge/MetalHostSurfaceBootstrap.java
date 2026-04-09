@@ -4,6 +4,9 @@ import java.util.List;
 
 public record MetalHostSurfaceBootstrap(
 	long nativeSurfaceHandle,
+	int drawableWidth,
+	int drawableHeight,
+	double contentsScale,
 	String detail,
 	List<String> missingCapabilities,
 	boolean libraryLoaded,

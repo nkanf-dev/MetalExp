@@ -105,6 +105,9 @@ class NativeMetalBridgeTest {
 		MetalHostSurfaceBootstrap bootstrap = NativeMetalBridge.getInstance().bootstrapSurface(0L, 0L);
 
 		assertEquals(0L, bootstrap.nativeSurfaceHandle());
+		assertEquals(0, bootstrap.drawableWidth());
+		assertEquals(0, bootstrap.drawableHeight());
+		assertEquals(0.0D, bootstrap.contentsScale());
 		assertEquals(List.of("cocoa_window_handle"), bootstrap.missingCapabilities());
 		assertTrue(bootstrap.libraryLoaded());
 		assertTrue(bootstrap.nativeEntryPointReached());

@@ -77,6 +77,9 @@ public final class NativeMetalBridge implements MetalBridge {
 		if (!surfaceProbe.isReady()) {
 			return new MetalHostSurfaceBootstrap(
 				0L,
+				0,
+				0,
+				0.0D,
 				surfaceProbe.detail(),
 				surfaceProbe.missingCapabilities(),
 				surfaceProbe.libraryLoaded(),
@@ -90,6 +93,9 @@ public final class NativeMetalBridge implements MetalBridge {
 		} catch (UnsatisfiedLinkError error) {
 			return new MetalHostSurfaceBootstrap(
 				0L,
+				0,
+				0,
+				0.0D,
 				error.getMessage() == null ? "Metal bridge native surface bootstrap entrypoint is missing." : error.getMessage(),
 				List.of("native_surface_bootstrap_entrypoint"),
 				true,
@@ -98,6 +104,9 @@ public final class NativeMetalBridge implements MetalBridge {
 		} catch (RuntimeException error) {
 			return new MetalHostSurfaceBootstrap(
 				0L,
+				0,
+				0,
+				0.0D,
 				error.getMessage() == null ? "Metal bridge native surface bootstrap failed." : error.getMessage(),
 				List.of("native_surface_bootstrap_runtime"),
 				true,
@@ -177,6 +186,9 @@ public final class NativeMetalBridge implements MetalBridge {
 		if (nativeResult == null) {
 			return new MetalHostSurfaceBootstrap(
 				0L,
+				0,
+				0,
+				0.0D,
 				"Metal bridge native surface bootstrap returned no result.",
 				List.of("native_surface_bootstrap_result"),
 				true,
@@ -194,6 +206,9 @@ public final class NativeMetalBridge implements MetalBridge {
 
 		return new MetalHostSurfaceBootstrap(
 			nativeSurfaceHandle,
+			nativeResult.drawableWidth(),
+			nativeResult.drawableHeight(),
+			nativeResult.contentsScale(),
 			nativeResult.detail(),
 			missingCapabilities,
 			true,

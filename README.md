@@ -33,7 +33,7 @@ What is still missing:
 - shader translation and pipeline compilation
 - rendering viability in menus and world rendering
 
-Today, selecting `METAL` still means scaffolding rather than a working renderer. The game now attempts a Java-side `MetalBackend` first, probes the native bridge for `CAMetalLayer`, `MTLDevice`, and `MTLCommandQueue` readiness, verifies that the active GLFW window unwraps to a Cocoa `NSWindow`/`NSView` host where a `CAMetalLayer` can be attached, and then bootstraps and releases a native host surface handle before finally falling through to Vulkan/OpenGL in fallback mode or stopping after the Metal backend failure in strict mode.
+Today, selecting `METAL` still means scaffolding rather than a working renderer. The game now attempts a Java-side `MetalBackend` first, probes the native bridge for `CAMetalLayer`, `MTLDevice`, and `MTLCommandQueue` readiness, verifies that the active GLFW window unwraps to a Cocoa `NSWindow`/`NSView` host where a `CAMetalLayer` can be attached, and then bootstraps and releases a native host surface handle that already reports initial `drawableSize` and `contentsScale` before finally falling through to Vulkan/OpenGL in fallback mode or stopping after the Metal backend failure in strict mode.
 
 ## Target Environment
 

@@ -79,6 +79,18 @@ final class MetalBackendBootstrapContext implements AutoCloseable {
 		return this.hostSurfaceBootstrap.nativeSurfaceHandle();
 	}
 
+	int drawableWidth() {
+		return this.hostSurfaceBootstrap.drawableWidth();
+	}
+
+	int drawableHeight() {
+		return this.hostSurfaceBootstrap.drawableHeight();
+	}
+
+	double contentsScale() {
+		return this.hostSurfaceBootstrap.contentsScale();
+	}
+
 	@Override
 	public void close() {
 		if (this.closed) {

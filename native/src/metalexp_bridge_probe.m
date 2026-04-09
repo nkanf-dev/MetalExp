@@ -65,13 +65,13 @@ static jobject metalexp_create_probe_result(JNIEnv *env, jint outcome_code, cons
 	return (*env)->NewObject(env, result_class, constructor, outcome_code, detail_string, missing);
 }
 
-static jobject metalexp_create_surface_bootstrap_result(JNIEnv *env, jint outcome_code, const char *detail, const char *missing_capability, jlong native_surface_handle) {
+static jobject metalexp_create_surface_bootstrap_result(JNIEnv *env, jint outcome_code, jint drawable_width, jint drawable_height, jdouble contents_scale, const char *detail, const char *missing_capability, jlong native_surface_handle) {
 	jclass result_class = (*env)->FindClass(env, "dev/nkanf/metalexp/bridge/NativeMetalBridgeSurfaceBootstrapResult");
 	if (result_class == NULL) {
 		return NULL;
 	}
 
-	jmethodID constructor = (*env)->GetMethodID(env, result_class, "<init>", "(ILjava/lang/String;[Ljava/lang/String;J)V");
+	jmethodID constructor = (*env)->GetMethodID(env, result_class, "<init>", "(IIIDLjava/lang/String;[Ljava/lang/String;J)V");
 	if (constructor == NULL) {
 		return NULL;
 	}
@@ -86,7 +86,7 @@ static jobject metalexp_create_surface_bootstrap_result(JNIEnv *env, jint outcom
 		return NULL;
 	}
 
-	return (*env)->NewObject(env, result_class, constructor, outcome_code, detail_string, missing, native_surface_handle);
+	return (*env)->NewObject(env, result_class, constructor, outcome_code, drawable_width, drawable_height, contents_scale, detail_string, missing, native_surface_handle);
 }
 
 static void metalexp_restore_bootstrapped_surface(metalexp_host_surface *surface) {
@@ -215,16 +215,21 @@ static jobject metalexp_validate_surface_host(JNIEnv *env, jlong cocoa_window_ha
 	return NULL;
 }
 
-static CAMetalLayer *metalexp_create_layer(NSWindow *window, id<MTLDevice> device) {
+static CAMetalLayer *metalexp_create_layer(NSWindow *window, NSView *view, id<MTLDevice> device) {
 	CAMetalLayer *layer = [CAMetalLayer layer];
 	if (layer == nil) {
 		return nil;
 	}
 
 	layer.device = device;
-	if (window.screen != nil) {
-		layer.contentsScale = window.screen.backingScaleFactor;
+	CGFloat contents_scale = window.screen != nil ? window.screen.backingScaleFactor : 1.0;
+	if (contents_scale <= 0.0) {
+		contents_scale = 1.0;
 	}
+
+	layer.contentsScale = contents_scale;
+	layer.frame = view.bounds;
+	layer.drawableSize = CGSizeMake(view.bounds.size.width * contents_scale, view.bounds.size.height * contents_scale);
 	return layer;
 }
 
@@ -237,7 +242,7 @@ static jobject metalexp_probe_surface(JNIEnv *env, jlong cocoa_window_handle, jl
 		return validation_error;
 	}
 
-	CAMetalLayer *layer = metalexp_create_layer(window, device);
+	CAMetalLayer *layer = metalexp_create_layer(window, view, device);
 	if (layer == nil) {
 		return metalexp_create_probe_result(
 			env,
@@ -288,17 +293,23 @@ static jobject metalexp_bootstrap_surface(JNIEnv *env, jlong cocoa_window_handle
 		return metalexp_create_surface_bootstrap_result(
 			env,
 			METALEXP_OUTCOME_ERROR,
+			0,
+			0,
+			0.0,
 			((void) validation_error, "Metal surface bootstrap failed during Cocoa host validation."),
 			"cocoa_surface_validation",
 			0L
 		);
 	}
 
-	CAMetalLayer *layer = metalexp_create_layer(window, device);
+	CAMetalLayer *layer = metalexp_create_layer(window, view, device);
 	if (layer == nil) {
 		return metalexp_create_surface_bootstrap_result(
 			env,
 			METALEXP_OUTCOME_ERROR,
+			0,
+			0,
+			0.0,
 			"CAMetalLayer exists but could not be instantiated for the Cocoa host surface bootstrap.",
 			"ca_metal_layer_instance",
 			0L
@@ -310,6 +321,9 @@ static jobject metalexp_bootstrap_surface(JNIEnv *env, jlong cocoa_window_handle
 		return metalexp_create_surface_bootstrap_result(
 			env,
 			METALEXP_OUTCOME_ERROR,
+			0,
+			0,
+			0.0,
 			"Failed to allocate native storage for the Metal host surface bootstrap.",
 			"native_surface_storage",
 			0L
@@ -329,6 +343,9 @@ static jobject metalexp_bootstrap_surface(JNIEnv *env, jlong cocoa_window_handle
 			return metalexp_create_surface_bootstrap_result(
 				env,
 				METALEXP_OUTCOME_ERROR,
+				0,
+				0,
+				0.0,
 				"Persistent CAMetalLayer attachment did not stick on the Cocoa NSView host.",
 				"ca_metal_layer_attach",
 				0L
@@ -339,6 +356,9 @@ static jobject metalexp_bootstrap_surface(JNIEnv *env, jlong cocoa_window_handle
 		return metalexp_create_surface_bootstrap_result(
 			env,
 			METALEXP_OUTCOME_ERROR,
+			0,
+			0,
+			0.0,
 			exception.reason == nil ? "Metal surface bootstrap threw an Objective-C exception." : exception.reason.UTF8String,
 			"cocoa_surface_bootstrap_exception",
 			0L
@@ -354,6 +374,9 @@ static jobject metalexp_bootstrap_surface(JNIEnv *env, jlong cocoa_window_handle
 	return metalexp_create_surface_bootstrap_result(
 		env,
 		METALEXP_OUTCOME_READY,
+		(jint)(layer.drawableSize.width + 0.5),
+		(jint)(layer.drawableSize.height + 0.5),
+		layer.contentsScale,
 		detail.UTF8String,
 		NULL,
 		(jlong)(uintptr_t)surface
