@@ -4,8 +4,12 @@
 	"compatibilityLevel": "JAVA_25",
 	"client": [
 		"ClientBootstrapMixin",
+<<<<<<< dev/backend-negotiation
+		"MinecraftBackendNegotiationMixin"
+=======
 		"VideoSettingsRestartWarningMixin",
 		"VideoSettingsDisplayOptionsMixin"
+>>>>>>> dev/bootstrap-diagnostics
 	],
 	"injectors": {
 		"defaultRequire": 1
