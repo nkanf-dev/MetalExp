@@ -13,9 +13,16 @@ The project also reserves space for the larger renderer effort:
 - `shared/` for cross-cutting models and diagnostics
 - `docs/` for design notes and implementation plans
 
-## Current Scope
+## Current Milestone
 
-This scaffold intentionally keeps the Fabric side simple while reserving directories for the native backend that will come later.
+The current codebase only implements the bootstrap and backend-selection core:
+
+- project-owned backend selection config
+- fallback and strict-mode planning
+- startup diagnostics
+- a client startup hook for future negotiation work
+
+It does not yet replace the in-game option screen or create a real Metal backend.
 
 ## Next Steps
 
