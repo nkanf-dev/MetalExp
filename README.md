@@ -22,16 +22,18 @@ The repository currently covers the bootstrap side of the project:
 - startup diagnostics logging
 - video settings replacement with a `MetalExp` graphics API option
 - startup backend negotiation override driven by `MetalExp` config
+- a real Java-side `MetalBackend` creation path that now returns a `GpuDevice`
+- a native bridge for library loading, process-level Metal capability checks, window-level Cocoa host probing, and persistent `CAMetalLayer` host-surface bootstrap/release
+- bootstrap Metal device, surface, buffer, texture, sampler, query, and command-encoder placeholders that are sufficient to pass `RenderSystem.initRenderer(...)` and `MainTarget` attachment allocation
 
 What is still missing:
 
-- a real `MetalBackend`
-- native Cocoa and `CAMetalLayer` bring-up
-- Metal device, surface, and resource lifecycle
 - shader translation and pipeline compilation
+- real Metal render passes, pipeline binding, and command submission
+- screen blit from the main render target into a `CAMetalDrawable`
 - rendering viability in menus and world rendering
 
-Today, selecting `METAL` still means scaffolding rather than a working renderer. In fallback mode the current code drops to Vulkan/OpenGL, and in strict mode it fails fast until a native Metal backend exists.
+Today, selecting `METAL` means the game really attempts Metal backend creation instead of failing up front. On supported macOS setups, `MetalExp` now probes Metal/Cocoa readiness, bootstraps a persistent native host surface, constructs a Java `GpuDevice`, and successfully clears Minecraft's renderer initialization path through `RenderSystem.initRenderer(...)` and `MainTarget` allocation. It is still not a working renderer yet, because render-pass, pipeline, texture blit, and presentation work remain unfinished.
 
 ## Target Environment
 
@@ -61,9 +63,9 @@ Canonical project references:
 ## Near-Term Roadmap
 
 1. Replace the current Metal scaffolding with a real `MetalBackend` entry path.
-2. Bring up the native macOS bridge for window extraction, `CAMetalLayer`, device, queue, and drawable lifecycle.
-3. Build surface/device/resource fundamentals.
-4. Add the shader toolchain path from GLSL to SPIR-V to MSL.
+2. Replace bootstrap resource placeholders with real Metal render-pass and pipeline execution.
+3. Add the shader toolchain path from GLSL to SPIR-V to MSL.
+4. Wire drawable blit/present into the native bridge and surface backend.
 5. Reach first rendering viability for startup, menu entry, resize, and shutdown.
 
 ## Building
@@ -72,6 +74,8 @@ Canonical project references:
 ./gradlew test
 ./gradlew build
 ```
+
+On macOS, the Gradle build also compiles `build/native/libmetalexp_native.dylib` for the current JNI probe implementation.
 
 ## License
 
