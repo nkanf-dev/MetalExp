@@ -22,6 +22,7 @@ The repository currently covers the bootstrap side of the project:
 - startup diagnostics logging
 - video settings replacement with a `MetalExp` graphics API option
 - startup backend negotiation override driven by `MetalExp` config
+- a Java-side `MetalBackend` stub that is actually attempted during startup negotiation
 
 What is still missing:
 
@@ -31,7 +32,7 @@ What is still missing:
 - shader translation and pipeline compilation
 - rendering viability in menus and world rendering
 
-Today, selecting `METAL` still means scaffolding rather than a working renderer. In fallback mode the current code drops to Vulkan/OpenGL, and in strict mode it fails fast until a native Metal backend exists.
+Today, selecting `METAL` still means scaffolding rather than a working renderer. The game now attempts a Java-side `MetalBackend` stub first; in fallback mode it then falls through to Vulkan/OpenGL, and in strict mode startup stops after the Metal backend creation failure.
 
 ## Target Environment
 

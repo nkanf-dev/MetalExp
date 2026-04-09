@@ -7,35 +7,28 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class BackendNegotiationResolver {
-	private static final String STRICT_UNAVAILABLE_MESSAGE = "MetalExp strict mode selected Metal, but native Metal backend is not implemented yet.";
-
 	private BackendNegotiationResolver() {
 	}
 
-	public static List<BackendKind> resolveRunnableBackends(BackendPlan plan) {
+	public static List<BackendKind> resolveBackendTryOrder(BackendPlan plan) {
 		if (plan == null || plan.backendsToTry() == null || plan.backendsToTry().isEmpty()) {
 			return List.of(BackendKind.VULKAN, BackendKind.OPENGL);
 		}
 
-		if (plan.failureMode() == FailureMode.STRICT && plan.backendsToTry().contains(BackendKind.METAL)) {
-			throw new IllegalStateException(STRICT_UNAVAILABLE_MESSAGE);
-		}
-
-		ArrayList<BackendKind> runnable = new ArrayList<>();
+		ArrayList<BackendKind> orderedBackends = new ArrayList<>();
 		for (BackendKind candidate : plan.backendsToTry()) {
-			if (candidate == BackendKind.METAL) {
-				continue;
+			if (!orderedBackends.contains(candidate)) {
+				orderedBackends.add(candidate);
 			}
-
-			if (!runnable.contains(candidate)) {
-				runnable.add(candidate);
+			if (plan.failureMode() == FailureMode.STRICT && candidate == BackendKind.METAL) {
+				break;
 			}
 		}
 
-		if (runnable.isEmpty()) {
+		if (orderedBackends.isEmpty()) {
 			return List.of(BackendKind.VULKAN, BackendKind.OPENGL);
 		}
 
-		return List.copyOf(runnable);
+		return List.copyOf(orderedBackends);
 	}
 }
