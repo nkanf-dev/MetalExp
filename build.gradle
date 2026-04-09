@@ -6,6 +6,8 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 def junitJupiterVersion = '5.10.0'
+def isMacOs = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac")
+def nativeBridgeOutput = layout.buildDirectory.file("native/libmetalexp_native.dylib")
 
 base {
 	archivesName = project.mod_id
@@ -53,8 +55,39 @@ tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
 }
 
+tasks.register("buildNativeMacosBridge", Exec) {
+	onlyIf { isMacOs }
+	inputs.file("native/src/metalexp_bridge_probe.m")
+	outputs.file(nativeBridgeOutput)
+	workingDir project.projectDir
+
+	doFirst {
+		nativeBridgeOutput.get().asFile.parentFile.mkdirs()
+	}
+
+	def javaHome = System.getProperty("java.home")
+	commandLine(
+		"xcrun",
+		"clang",
+		"-fobjc-arc",
+		"-dynamiclib",
+		"-I${javaHome}/include",
+		"-I${javaHome}/include/darwin",
+		"${project.projectDir}/native/src/metalexp_bridge_probe.m",
+		"-framework",
+		"Foundation",
+		"-framework",
+		"Metal",
+		"-framework",
+		"QuartzCore",
+		"-o",
+		nativeBridgeOutput.get().asFile.absolutePath
+	)
+}
+
 test {
 	useJUnitPlatform()
+	dependsOn(tasks.named("buildNativeMacosBridge"))
 }
 
 java {
@@ -70,6 +103,10 @@ jar {
 	from("LICENSE") {
 		rename { "${it}_${project.name}" }
 	}
+}
+
+tasks.named("build") {
+	dependsOn(tasks.named("buildNativeMacosBridge"))
 }
 
 publishing {

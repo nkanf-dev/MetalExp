@@ -75,6 +75,8 @@ Canonical project references:
 ./gradlew build
 ```
 
+On macOS, the Gradle build also compiles `build/native/libmetalexp_native.dylib` for the current JNI probe implementation.
+
 ## License
 
 This project is licensed under the MIT License. See `LICENSE`.

@@ -3,11 +3,15 @@ package dev.nkanf.metalexp.bridge;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class NativeMetalBridgeTest {
 	private String originalOsName = System.getProperty("os.name");
@@ -46,6 +50,26 @@ class NativeMetalBridgeTest {
 		assertEquals(List.of("native_metal_bridge_library"), probe.missingCapabilities());
 		assertFalse(probe.libraryLoaded());
 		assertFalse(probe.nativeEntryPointReached());
+		assertTrue(probe.detail() != null && !probe.detail().isBlank());
+	}
+
+	@Test
+	void probeCanReachBuiltNativeBridgeOnMacOs() {
+		assumeTrue(System.getProperty("os.name", "").toLowerCase().contains("mac"));
+
+		Path libraryPath = Path.of("build/native/libmetalexp_native.dylib").toAbsolutePath().normalize();
+		assumeTrue(Files.exists(libraryPath));
+
+		System.setProperty("metalexp.nativeLibraryPath", libraryPath.toString());
+		NativeMetalBridgeLoader.resetForTests();
+
+		MetalBridgeProbe probe = NativeMetalBridge.getInstance().probe();
+
+		assertTrue(probe.libraryLoaded());
+		assertTrue(probe.nativeEntryPointReached());
+		assertNotEquals(MetalBridgeProbeStatus.LIBRARY_MISSING, probe.status());
+		assertNotEquals(MetalBridgeProbeStatus.LIBRARY_LOAD_FAILED, probe.status());
+		assertNotEquals(MetalBridgeProbeStatus.UNSUPPORTED_OS, probe.status());
 		assertTrue(probe.detail() != null && !probe.detail().isBlank());
 	}
 
