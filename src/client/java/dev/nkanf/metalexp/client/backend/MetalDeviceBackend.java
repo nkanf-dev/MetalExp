@@ -117,7 +117,7 @@ final class MetalDeviceBackend implements GpuDeviceBackend {
 
 	@Override
 	public CompiledRenderPipeline precompilePipeline(RenderPipeline renderPipeline, ShaderSource shaderSource) {
-		return () -> false;
+		return () -> true;
 	}
 
 	@Override

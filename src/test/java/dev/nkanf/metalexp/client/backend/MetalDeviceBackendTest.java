@@ -2,8 +2,10 @@ package dev.nkanf.metalexp.client.backend;
 
 import com.mojang.blaze3d.systems.GpuSurface;
 import com.mojang.blaze3d.pipeline.MainTarget;
+import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.SurfaceException;
 import com.mojang.blaze3d.textures.AddressMode;
 import com.mojang.blaze3d.textures.FilterMode;
@@ -17,6 +19,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -149,6 +152,62 @@ class MetalDeviceBackendTest {
 		} finally {
 			if (mainTarget != null) {
 				mainTarget.destroyBuffers();
+			}
+
+			RenderSystem.shutdownRenderer();
+			resetRenderSystemState();
+		}
+	}
+
+	@Test
+	void supportsNoOpRenderPassAndSurfaceBlitLifecycle() throws Exception {
+		GpuDevice device = new GpuDevice(
+			new MetalDeviceBackend(
+				new SurfaceTrackingBridge(),
+				new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+			)
+		);
+		GpuSurface surface = null;
+		CommandEncoder commandEncoder = null;
+		RenderPass renderPass = null;
+
+		resetRenderSystemState();
+		setRenderThread(Thread.currentThread());
+		try {
+			RenderSystem.initRenderer(device);
+
+			com.mojang.blaze3d.textures.GpuTexture colorTexture = device.createTexture("surface-color", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 32, 32, 1, 1);
+			com.mojang.blaze3d.textures.GpuTextureView colorTextureView = device.createTextureView(colorTexture);
+			com.mojang.blaze3d.textures.GpuTexture colorTextureB = device.createTexture("surface-color-b", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 32, 32, 1, 1);
+			com.mojang.blaze3d.textures.GpuTexture depthTexture = device.createTexture("surface-depth", 15, com.mojang.blaze3d.GpuFormat.D32_FLOAT, 32, 32, 1, 1);
+			surface = device.createSurface(123L);
+			surface.configure(new GpuSurface.Configuration(32, 32, true));
+			surface.acquireNextTexture();
+
+			commandEncoder = device.createCommandEncoder();
+			commandEncoder.clearColorAndDepthTextures(colorTexture, 0, depthTexture, 1.0D);
+			commandEncoder.clearDepthTexture(depthTexture, 1.0D);
+			commandEncoder.copyTextureToTexture(colorTexture, colorTextureB, 0, 0, 0, 0, 0, 32, 32);
+			renderPass = commandEncoder.createRenderPass(() -> "noop-pass", colorTextureView, OptionalInt.empty());
+			renderPass.draw(3, 1);
+			renderPass.close();
+			renderPass = null;
+
+			surface.blitFromTexture(commandEncoder, colorTextureView);
+			commandEncoder.submit();
+			surface.present();
+
+			colorTextureView.close();
+			colorTextureB.close();
+			depthTexture.close();
+			colorTexture.close();
+		} finally {
+			if (renderPass != null) {
+				renderPass.close();
+			}
+
+			if (surface != null && !surface.isAcquired()) {
+				surface.close();
 			}
 
 			RenderSystem.shutdownRenderer();

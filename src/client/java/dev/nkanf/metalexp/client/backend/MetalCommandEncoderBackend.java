@@ -16,18 +16,20 @@ import java.util.OptionalInt;
 import java.util.function.Supplier;
 
 final class MetalCommandEncoderBackend implements CommandEncoderBackend {
+	private static final MetalRenderPassBackend NO_OP_RENDER_PASS = new MetalRenderPassBackend();
+
 	@Override
 	public void submit() {
 	}
 
 	@Override
 	public RenderPassBackend createRenderPass(Supplier<String> supplier, GpuTextureView gpuTextureView, OptionalInt optionalInt) {
-		throw new UnsupportedOperationException("Metal render passes are not implemented yet.");
+		return NO_OP_RENDER_PASS;
 	}
 
 	@Override
 	public RenderPassBackend createRenderPass(Supplier<String> supplier, GpuTextureView gpuTextureView, OptionalInt optionalInt, GpuTextureView gpuTextureView1, OptionalDouble optionalDouble) {
-		throw new UnsupportedOperationException("Metal render passes are not implemented yet.");
+		return NO_OP_RENDER_PASS;
 	}
 
 	@Override
@@ -36,22 +38,18 @@ final class MetalCommandEncoderBackend implements CommandEncoderBackend {
 
 	@Override
 	public void clearColorTexture(GpuTexture gpuTexture, int i) {
-		throw new UnsupportedOperationException("Metal color clears are not implemented yet.");
 	}
 
 	@Override
 	public void clearColorAndDepthTextures(GpuTexture gpuTexture, int i, GpuTexture gpuTexture1, double v) {
-		throw new UnsupportedOperationException("Metal color/depth clears are not implemented yet.");
 	}
 
 	@Override
 	public void clearColorAndDepthTextures(GpuTexture gpuTexture, int i, GpuTexture gpuTexture1, double v, int i1, int i2, int i3, int i4) {
-		throw new UnsupportedOperationException("Metal region clears are not implemented yet.");
 	}
 
 	@Override
 	public void clearDepthTexture(GpuTexture gpuTexture, double v) {
-		throw new UnsupportedOperationException("Metal depth clears are not implemented yet.");
 	}
 
 	@Override
@@ -66,7 +64,8 @@ final class MetalCommandEncoderBackend implements CommandEncoderBackend {
 
 	@Override
 	public void copyToBuffer(GpuBufferSlice gpuBufferSlice, GpuBufferSlice gpuBufferSlice1) {
-		throw new UnsupportedOperationException("Metal buffer copies are not implemented yet.");
+		ByteBuffer source = ((MetalBuffer) gpuBufferSlice.buffer()).sliceStorage(gpuBufferSlice.offset(), gpuBufferSlice.length());
+		((MetalBuffer) gpuBufferSlice1.buffer()).write(gpuBufferSlice1.offset(), source);
 	}
 
 	@Override
@@ -91,7 +90,6 @@ final class MetalCommandEncoderBackend implements CommandEncoderBackend {
 
 	@Override
 	public void copyTextureToTexture(GpuTexture gpuTexture, GpuTexture gpuTexture1, int i, int i1, int i2, int i3, int i4, int i5, int i6) {
-		throw new UnsupportedOperationException("Metal texture copies are not implemented yet.");
 	}
 
 	@Override

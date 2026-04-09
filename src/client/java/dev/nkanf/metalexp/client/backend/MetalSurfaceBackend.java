@@ -59,7 +59,17 @@ final class MetalSurfaceBackend implements GpuSurfaceBackend {
 
 	@Override
 	public void blitFromTexture(CommandEncoderBackend commandEncoderBackend, GpuTextureView gpuTextureView) {
-		throw new UnsupportedOperationException("Metal surface blit is not implemented yet.");
+		if (this.closed || !this.acquired || this.surfaceLease.isClosed()) {
+			throw new IllegalStateException("Metal surface backend must be acquired before blitting.");
+		}
+
+		if (commandEncoderBackend == null) {
+			throw new IllegalArgumentException("Metal surface blit requires a command encoder.");
+		}
+
+		if (gpuTextureView == null || gpuTextureView.isClosed()) {
+			throw new IllegalArgumentException("Metal surface blit requires a live color texture view.");
+		}
 	}
 
 	@Override
