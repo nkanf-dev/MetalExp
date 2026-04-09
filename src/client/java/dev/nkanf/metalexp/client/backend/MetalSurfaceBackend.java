@@ -64,11 +64,18 @@ final class MetalSurfaceBackend implements GpuSurfaceBackend {
 
 	@Override
 	public void present() {
-		if (this.closed || !this.acquired) {
+		if (this.closed || !this.acquired || this.surfaceLease.isClosed()) {
+			this.acquired = false;
 			return;
 		}
 
-		this.surfaceLease.present();
+		try {
+			this.surfaceLease.present();
+		} catch (IllegalStateException | IllegalArgumentException error) {
+			// Presentation is best-effort during bootstrap; a closed/invalid lease
+			// should not crash shutdown or fallback paths.
+		}
+
 		this.acquired = false;
 	}
 

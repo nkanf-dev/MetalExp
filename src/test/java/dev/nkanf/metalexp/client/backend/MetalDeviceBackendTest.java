@@ -111,6 +111,24 @@ class MetalDeviceBackendTest {
 	}
 
 	@Test
+	void presentBecomesBestEffortWhenLeaseClosesAfterAcquire() throws SurfaceException {
+		SurfaceTrackingBridge bridge = new SurfaceTrackingBridge();
+		MetalSurfaceLease surfaceLease = new MetalSurfaceLease(
+			bridge,
+			new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+		);
+		MetalSurfaceBackend surfaceBackend = new MetalSurfaceBackend(surfaceLease);
+		surfaceBackend.configure(new GpuSurface.Configuration(1280, 720, true));
+		surfaceBackend.acquireNextTexture();
+
+		surfaceLease.close();
+		surfaceBackend.present();
+
+		assertFalse(surfaceBackend.isAcquired());
+		assertFalse(bridge.presented.get());
+	}
+
+	@Test
 	void supportsRenderSystemInitializationAndMainTargetAllocation() throws Exception {
 		GpuDevice device = new GpuDevice(
 			new MetalDeviceBackend(

@@ -81,7 +81,8 @@ class MetalBackendTest {
 				releasedHandle,
 				releaseCount
 			),
-			window -> new CocoaHostSurface(1L, 2L)
+			window -> new CocoaHostSurface(1L, 2L),
+			surfaceLease -> new GpuDevice(new MetalDeviceBackend(surfaceLease))
 		);
 
 		GpuDevice device = backend.createDevice(123L, null, null);
@@ -91,6 +92,34 @@ class MetalBackendTest {
 		surface.close();
 		device.close();
 
+		assertEquals(42L, releasedHandle.get());
+		assertEquals(1, releaseCount.get());
+	}
+
+	@Test
+	void createDeviceReleasesDetachedSurfaceLeaseWhenDeviceConstructionFails() {
+		AtomicLong releasedHandle = new AtomicLong(-1L);
+		AtomicInteger releaseCount = new AtomicInteger();
+		MetalBackend backend = new MetalBackend(
+			new FixedProbeBridge(
+				readyProbe("Metal probe succeeded."),
+				readyProbe("Metal surface probe succeeded."),
+				readyBootstrap("Metal surface bootstrap succeeded.", 42L),
+				releasedHandle,
+				releaseCount
+			),
+			window -> new CocoaHostSurface(1L, 2L),
+			surfaceLease -> {
+				throw new IllegalStateException("simulated device construction failure");
+			}
+		);
+
+		IllegalStateException exception = assertThrows(
+			IllegalStateException.class,
+			() -> backend.createDevice(123L, null, null)
+		);
+
+		assertEquals("simulated device construction failure", exception.getMessage());
 		assertEquals(42L, releasedHandle.get());
 		assertEquals(1, releaseCount.get());
 	}

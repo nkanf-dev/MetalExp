@@ -10,25 +10,43 @@ import dev.nkanf.metalexp.bridge.MetalBridge;
 import dev.nkanf.metalexp.bridge.NativeMetalBridge;
 import org.lwjgl.glfw.GLFW;
 
-import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 
 public final class MetalBackend implements GpuBackend {
 	private static final String WINDOW_CREATION_FAILURE_MESSAGE = "Failed to create window for Metal";
 	private final MetalBridge metalBridge;
 	private final CocoaHostSurfaceResolver cocoaHostSurfaceResolver;
+	private final Function<MetalSurfaceLease, GpuDevice> gpuDeviceFactory;
 
 	public MetalBackend() {
-		this(NativeMetalBridge.getInstance(), new LwjglCocoaHostSurfaceResolver());
+		this(
+			NativeMetalBridge.getInstance(),
+			new LwjglCocoaHostSurfaceResolver(),
+			surfaceLease -> new GpuDevice(new MetalDeviceBackend(surfaceLease))
+		);
 	}
 
 	MetalBackend(MetalBridge metalBridge) {
-		this(metalBridge, new LwjglCocoaHostSurfaceResolver());
+		this(
+			metalBridge,
+			new LwjglCocoaHostSurfaceResolver(),
+			surfaceLease -> new GpuDevice(new MetalDeviceBackend(surfaceLease))
+		);
 	}
 
 	MetalBackend(MetalBridge metalBridge, CocoaHostSurfaceResolver cocoaHostSurfaceResolver) {
+		this(
+			metalBridge,
+			cocoaHostSurfaceResolver,
+			surfaceLease -> new GpuDevice(new MetalDeviceBackend(surfaceLease))
+		);
+	}
+
+	MetalBackend(MetalBridge metalBridge, CocoaHostSurfaceResolver cocoaHostSurfaceResolver, Function<MetalSurfaceLease, GpuDevice> gpuDeviceFactory) {
 		this.metalBridge = Objects.requireNonNull(metalBridge, "metalBridge");
 		this.cocoaHostSurfaceResolver = Objects.requireNonNull(cocoaHostSurfaceResolver, "cocoaHostSurfaceResolver");
+		this.gpuDeviceFactory = Objects.requireNonNull(gpuDeviceFactory, "gpuDeviceFactory");
 	}
 
 	@Override
@@ -53,17 +71,19 @@ public final class MetalBackend implements GpuBackend {
 
 	@Override
 	public GpuDevice createDevice(long window, ShaderSource defaultShaderSource, GpuDebugOptions debugOptions) throws BackendCreationException {
-		MetalBackendBootstrapContext bootstrapContext = MetalBackendBootstrapContext.bootstrap(
+		try (MetalBackendBootstrapContext bootstrapContext = MetalBackendBootstrapContext.bootstrap(
 			this.metalBridge,
 			this.cocoaHostSurfaceResolver,
 			window
-		);
+		)) {
+			MetalSurfaceLease surfaceLease = bootstrapContext.detachSurfaceLease();
 
-		try {
-			return new GpuDevice(new MetalDeviceBackend(bootstrapContext.detachSurfaceLease()));
-		} catch (RuntimeException | Error error) {
-			bootstrapContext.close();
-			throw error;
+			try {
+				return this.gpuDeviceFactory.apply(surfaceLease);
+			} catch (RuntimeException | Error error) {
+				surfaceLease.close();
+				throw error;
+			}
 		}
 	}
 }
