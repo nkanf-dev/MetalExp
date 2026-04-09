@@ -42,6 +42,35 @@ public final class NativeMetalBridge implements MetalBridge {
 		}
 	}
 
+	@Override
+	public MetalBridgeProbe probeSurface(long cocoaWindowHandle, long cocoaViewHandle) {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded()) {
+			return fromLoadResult(loadResult);
+		}
+
+		try {
+			NativeMetalBridgeProbeResult nativeResult = probeSurface0(cocoaWindowHandle, cocoaViewHandle);
+			return fromNativeResult(nativeResult);
+		} catch (UnsatisfiedLinkError error) {
+			return new MetalBridgeProbe(
+				MetalBridgeProbeStatus.NATIVE_ERROR,
+				error.getMessage() == null ? "Metal bridge native surface probe entrypoint is missing." : error.getMessage(),
+				List.of("native_surface_probe_entrypoint"),
+				true,
+				false
+			);
+		} catch (RuntimeException error) {
+			return new MetalBridgeProbe(
+				MetalBridgeProbeStatus.NATIVE_ERROR,
+				error.getMessage() == null ? "Metal bridge native surface probe failed." : error.getMessage(),
+				List.of("native_surface_probe_runtime"),
+				true,
+				true
+			);
+		}
+	}
+
 	private MetalBridgeProbe fromLoadResult(MetalBridgeLoadResult loadResult) {
 		MetalBridgeProbeStatus status = switch (loadResult.status()) {
 			case UNSUPPORTED_OS -> MetalBridgeProbeStatus.UNSUPPORTED_OS;
@@ -96,4 +125,6 @@ public final class NativeMetalBridge implements MetalBridge {
 	}
 
 	private static native NativeMetalBridgeProbeResult probe0();
+
+	private static native NativeMetalBridgeProbeResult probeSurface0(long cocoaWindowHandle, long cocoaViewHandle);
 }

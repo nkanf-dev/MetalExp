@@ -75,6 +75,8 @@ tasks.register("buildNativeMacosBridge", Exec) {
 		"-I${javaHome}/include/darwin",
 		"${project.projectDir}/native/src/metalexp_bridge_probe.m",
 		"-framework",
+		"AppKit",
+		"-framework",
 		"Foundation",
 		"-framework",
 		"Metal",

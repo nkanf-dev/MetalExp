@@ -13,7 +13,8 @@ Current scope:
 
 - a minimal JNI-loadable stub library target named `metalexp_native`
 - a native probe entrypoint that checks `CAMetalLayer` availability, default `MTLDevice` access, and `MTLCommandQueue` creation
-- no Cocoa window extraction, surface attachment, or drawable lifecycle work yet
+- a window-level probe entrypoint that validates GLFW-derived Cocoa `NSWindow` / `NSView` hosts by temporarily attaching and restoring a `CAMetalLayer`
+- no real `CAMetalLayer` attachment, drawable lifecycle, or persistent surface ownership yet
 
 On macOS, `./gradlew build` now also emits a JNI dylib at `build/native/libmetalexp_native.dylib`.
 You can point the Java bridge at that artifact with the `metalexp.nativeLibraryPath` system property while iterating on the native probe.

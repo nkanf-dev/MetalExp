@@ -73,6 +73,25 @@ class NativeMetalBridgeTest {
 		assertTrue(probe.detail() != null && !probe.detail().isBlank());
 	}
 
+	@Test
+	void surfaceProbeReportsMissingCocoaWindowHandleForNullPointers() {
+		assumeTrue(System.getProperty("os.name", "").toLowerCase().contains("mac"));
+
+		Path libraryPath = Path.of("build/native/libmetalexp_native.dylib").toAbsolutePath().normalize();
+		assumeTrue(Files.exists(libraryPath));
+
+		System.setProperty("metalexp.nativeLibraryPath", libraryPath.toString());
+		NativeMetalBridgeLoader.resetForTests();
+
+		MetalBridgeProbe probe = NativeMetalBridge.getInstance().probeSurface(0L, 0L);
+
+		assertEquals(MetalBridgeProbeStatus.NATIVE_ERROR, probe.status());
+		assertEquals(List.of("cocoa_window_handle"), probe.missingCapabilities());
+		assertTrue(probe.libraryLoaded());
+		assertTrue(probe.nativeEntryPointReached());
+		assertTrue(probe.detail() != null && !probe.detail().isBlank());
+	}
+
 	private static void restoreProperty(String name, String value) {
 		if (value == null) {
 			System.clearProperty(name);

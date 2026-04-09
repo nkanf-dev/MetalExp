@@ -16,6 +16,7 @@ target_compile_features(metalexp_native PRIVATE c_std_11)
 
 if(APPLE)
 	target_link_libraries(metalexp_native PRIVATE
+		"-framework AppKit"
 		"-framework Foundation"
 		"-framework Metal"
 		"-framework QuartzCore"

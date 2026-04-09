@@ -16,15 +16,22 @@ import java.util.Objects;
 
 public final class MetalBackend implements GpuBackend {
 	private static final String WINDOW_CREATION_FAILURE_MESSAGE = "Failed to create window for Metal";
+	private static final String WINDOW_HANDLE_MISSING_MESSAGE = "Metal backend requires a live GLFW window handle.";
 	private static final String DEVICE_BACKEND_UNIMPLEMENTED_MESSAGE = "Metal bridge probe succeeded, but the Java Metal device backend is not implemented yet.";
 	private final MetalBridge metalBridge;
+	private final CocoaHostSurfaceResolver cocoaHostSurfaceResolver;
 
 	public MetalBackend() {
-		this(NativeMetalBridge.getInstance());
+		this(NativeMetalBridge.getInstance(), new LwjglCocoaHostSurfaceResolver());
 	}
 
 	MetalBackend(MetalBridge metalBridge) {
+		this(metalBridge, new LwjglCocoaHostSurfaceResolver());
+	}
+
+	MetalBackend(MetalBridge metalBridge, CocoaHostSurfaceResolver cocoaHostSurfaceResolver) {
 		this.metalBridge = Objects.requireNonNull(metalBridge, "metalBridge");
+		this.cocoaHostSurfaceResolver = Objects.requireNonNull(cocoaHostSurfaceResolver, "cocoaHostSurfaceResolver");
 	}
 
 	@Override
@@ -49,12 +56,33 @@ public final class MetalBackend implements GpuBackend {
 
 	@Override
 	public GpuDevice createDevice(long window, ShaderSource defaultShaderSource, GpuDebugOptions debugOptions) throws BackendCreationException {
+		if (window == 0L) {
+			throw new BackendCreationException(
+				WINDOW_HANDLE_MISSING_MESSAGE,
+				BackendCreationException.Reason.OTHER,
+				List.of("glfw_window_handle")
+			);
+		}
+
 		MetalBridgeProbe probe = this.metalBridge.probe();
 		if (!probe.isReady()) {
 			throw new BackendCreationException(
 				probe.detail(),
 				BackendCreationException.Reason.OTHER,
 				probe.missingCapabilities()
+			);
+		}
+
+		CocoaHostSurface cocoaHostSurface = this.cocoaHostSurfaceResolver.resolve(window);
+		MetalBridgeProbe surfaceProbe = this.metalBridge.probeSurface(
+			cocoaHostSurface.cocoaWindowHandle(),
+			cocoaHostSurface.cocoaViewHandle()
+		);
+		if (!surfaceProbe.isReady()) {
+			throw new BackendCreationException(
+				surfaceProbe.detail(),
+				BackendCreationException.Reason.OTHER,
+				surfaceProbe.missingCapabilities()
 			);
 		}
 
