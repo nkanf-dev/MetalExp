@@ -7,12 +7,14 @@ import com.mojang.blaze3d.systems.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.SurfaceException;
+import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.textures.AddressMode;
 import com.mojang.blaze3d.textures.FilterMode;
 import dev.nkanf.metalexp.bridge.MetalBridge;
 import dev.nkanf.metalexp.bridge.MetalBridgeProbe;
 import dev.nkanf.metalexp.bridge.MetalBridgeProbeStatus;
 import dev.nkanf.metalexp.bridge.MetalHostSurfaceBootstrap;
+import net.minecraft.client.renderer.texture.DynamicTexture;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -215,6 +217,77 @@ class MetalDeviceBackendTest {
 		}
 	}
 
+	@Test
+	void supportsDynamicTextureUpload() throws Exception {
+		GpuDevice device = new GpuDevice(
+			new MetalDeviceBackend(
+				new SurfaceTrackingBridge(),
+				new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+			)
+		);
+		DynamicTexture dynamicTexture = null;
+		NativeImage copyImage = null;
+		MetalTexture uploadTexture = null;
+		MetalTexture copiedTexture = null;
+		MetalBuffer readbackBuffer = null;
+
+		resetRenderSystemState();
+		setRenderThread(Thread.currentThread());
+		try {
+			RenderSystem.initRenderer(device);
+
+			NativeImage image = new NativeImage(2, 2, true);
+			image.setPixel(0, 0, 0xFF3366CC);
+			image.setPixel(1, 1, 0xFF112233);
+			dynamicTexture = new DynamicTexture(() -> "dynamic-upload", image);
+
+			MetalTexture texture = (MetalTexture) dynamicTexture.getTexture();
+			ByteBuffer storage = texture.snapshotStorage(0);
+			CommandEncoder commandEncoder = device.createCommandEncoder();
+			AtomicBoolean readbackCompleted = new AtomicBoolean();
+
+			copyImage = new NativeImage(2, 2, true);
+			copyImage.setPixel(0, 0, 0xFFAA5500);
+			copyImage.setPixel(1, 1, 0xFF00BB66);
+			uploadTexture = (MetalTexture) device.createTexture("upload-source", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 2, 2, 1, 1);
+			copiedTexture = (MetalTexture) device.createTexture("dynamic-copy", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 2, 2, 1, 1);
+			commandEncoder.writeToTexture(uploadTexture, copyImage);
+			commandEncoder.copyTextureToTexture(uploadTexture, copiedTexture, 0, 0, 0, 0, 0, 2, 2);
+			readbackBuffer = (MetalBuffer) device.createBuffer(() -> "dynamic-readback", 9, 16L);
+			commandEncoder.copyTextureToBuffer(copiedTexture, readbackBuffer, 0L, () -> readbackCompleted.set(true), 0);
+			commandEncoder.submit();
+
+			assertEquals(16, storage.remaining());
+			assertFalse(isAllZero(storage));
+			assertFalse(isAllZero(copiedTexture.snapshotStorage(0)));
+			assertFalse(isAllZero(readbackBuffer.sliceStorage(0L, 16L)));
+			assertTrue(readbackCompleted.get());
+		} finally {
+			if (readbackBuffer != null) {
+				readbackBuffer.close();
+			}
+
+			if (copiedTexture != null) {
+				copiedTexture.close();
+			}
+
+			if (uploadTexture != null) {
+				uploadTexture.close();
+			}
+
+			if (copyImage != null) {
+				copyImage.close();
+			}
+
+			if (dynamicTexture != null) {
+				dynamicTexture.close();
+			}
+
+			RenderSystem.shutdownRenderer();
+			resetRenderSystemState();
+		}
+	}
+
 	private static void resetRenderSystemState() throws Exception {
 		setRenderThread(null);
 		setRenderSystemField("DEVICE", null);
@@ -229,6 +302,18 @@ class MetalDeviceBackendTest {
 		Field field = RenderSystem.class.getDeclaredField(fieldName);
 		field.setAccessible(true);
 		field.set(null, value);
+	}
+
+	private static boolean isAllZero(ByteBuffer byteBuffer) {
+		ByteBuffer copy = byteBuffer.duplicate();
+
+		while (copy.hasRemaining()) {
+			if (copy.get() != 0) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	private static final class SurfaceTrackingBridge implements MetalBridge {

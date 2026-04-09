@@ -9,6 +9,7 @@ import com.mojang.blaze3d.systems.GpuQueryPool;
 import com.mojang.blaze3d.systems.RenderPassBackend;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
 import java.util.OptionalDouble;
@@ -70,26 +71,33 @@ final class MetalCommandEncoderBackend implements CommandEncoderBackend {
 
 	@Override
 	public void writeToTexture(GpuTexture gpuTexture, NativeImage nativeImage, int i, int i1, int i2, int i3, int i4, int i5, int i6, int i7) {
-		throw new UnsupportedOperationException("Metal image uploads are not implemented yet.");
+		ByteBuffer source = MemoryUtil.memByteBuffer(
+			nativeImage.getPointer(),
+			nativeImage.getWidth() * nativeImage.getHeight() * nativeImage.format().components()
+		);
+		((MetalTexture) gpuTexture).writeRegion(source, nativeImage.format().components(), nativeImage.getWidth(), i, i2, i3, i4, i5, i6, i7);
 	}
 
 	@Override
 	public void writeToTexture(GpuTexture gpuTexture, ByteBuffer byteBuffer, NativeImage.Format format, int i, int i1, int i2, int i3, int i4, int i5) {
-		throw new UnsupportedOperationException("Metal texture uploads are not implemented yet.");
+		((MetalTexture) gpuTexture).writeRegion(byteBuffer, format.components(), i4, i, i2, i3, i4, i5, 0, 0);
 	}
 
 	@Override
 	public void copyTextureToBuffer(GpuTexture gpuTexture, GpuBuffer gpuBuffer, long l, Runnable runnable, int i) {
-		throw new UnsupportedOperationException("Metal texture readback is not implemented yet.");
+		copyTextureToBuffer(gpuTexture, gpuBuffer, l, runnable, i, 0, 0, gpuTexture.getWidth(i), gpuTexture.getHeight(i));
 	}
 
 	@Override
 	public void copyTextureToBuffer(GpuTexture gpuTexture, GpuBuffer gpuBuffer, long l, Runnable runnable, int i, int i1, int i2, int i3, int i4) {
-		throw new UnsupportedOperationException("Metal texture readback is not implemented yet.");
+		ByteBuffer source = ((MetalTexture) gpuTexture).readRegion(i, i1, i2, i3, i4);
+		((MetalBuffer) gpuBuffer).write(l, source);
+		runnable.run();
 	}
 
 	@Override
 	public void copyTextureToTexture(GpuTexture gpuTexture, GpuTexture gpuTexture1, int i, int i1, int i2, int i3, int i4, int i5, int i6) {
+		((MetalTexture) gpuTexture).copyRegionTo((MetalTexture) gpuTexture1, i, i1, i2, i3, i4, i5, i6);
 	}
 
 	@Override
