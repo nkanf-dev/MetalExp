@@ -3,12 +3,13 @@
 	"id": "${mod_id}",
 	"version": "${version}",
 	"name": "${mod_name}",
-	"description": "Experimental Fabric mod scaffold for a native Metal rendering backend project.",
+	"description": "Experimental Fabric-delivered backend project for bringing a native Metal renderer to Minecraft snapshots on macOS.",
 	"authors": [
 		"nkanf"
 	],
 	"contact": {},
-	"license": "CC0-1.0",
+	"license": "MIT",
+	"icon": "assets/metalexp/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
@@ -27,7 +28,7 @@
 	],
 	"depends": {
 		"fabricloader": ">=0.18.6",
-		"minecraft": "~26.1.1",
+		"minecraft": "26.2-snapshot-1",
 		"java": ">=25",
 		"fabric-api": "*"
 	}

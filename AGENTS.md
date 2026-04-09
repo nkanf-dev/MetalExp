@@ -57,34 +57,20 @@ Do not skip directly to broad renderer work if the previous layer is still fake 
 
 ## Git And PR Rules
 
-Every major feature must live on its own `dev/xxx` branch.
-
-Examples of valid feature boundaries:
-
-- `dev/bootstrap-diagnostics`
-- `dev/settings-ui-overlay`
-- `dev/backend-negotiation`
-- future `dev/metal-backend-stub`
-- future `dev/native-surface-bringup`
-
-Examples of invalid boundaries:
-
-- mixing settings UI replacement and startup negotiation in one branch
-- mixing native bridge work and shader toolchain work in one branch
-- using `codex/xxx` for new work in this repository
+`dev` is the canonical development branch for this repository.
 
 ### Branch policy
 
-- New feature branches must use the `dev/` prefix
-- One branch should represent one functional boundary
-- Stacked branches are acceptable when the dependency chain is real and explicit
-- If work naturally splits into two reviewable features, create two branches
+- Do normal implementation work on `dev`
+- Do not create `dev/xxx` or `dev-xxx` branches unless the user explicitly asks for an auxiliary branch
+- If an auxiliary branch is needed, use a descriptive name that reflects the work and keep the dependency chain explicit
+- Keep review boundaries coherent through commits and PR scope even when work lands on `dev`
 
 ### Commit policy
 
-- Do not make one giant commit for a whole feature branch
+- Do not make one giant commit for a whole milestone
 - Do not make commits so tiny that each one is meaningless noise
-- Prefer 2-4 commits per feature branch when the work benefits from review checkpoints
+- Prefer 2-4 commits for a substantial milestone when the work benefits from review checkpoints
 - Each commit should still be coherent on its own
 
 Good examples:
@@ -96,14 +82,14 @@ Good examples:
 Bad examples:
 
 - `wip`
-- one commit containing settings UI, negotiation, native bridge, and docs
+- one commit containing settings UI, negotiation, native bridge, and docs with no reviewable checkpoints
 
 ### PR policy
 
-- When a feature branch is ready, push it and open a PR
-- The PR base should match the real dependency chain
-- If the feature depends on an unmerged branch, use a stacked PR against that branch
-- After opening the PR, notify the user to review it
+- When work on `dev` reaches a reviewable checkpoint, push it and open a PR if the user wants review flow
+- Unless the user specifies a different base, treat `dev` as the default integration base
+- If the work depends on an unmerged auxiliary branch, make that dependency explicit
+- After opening a PR, notify the user to review it
 
 ## Working Style
 
@@ -127,6 +113,6 @@ Until then, any Metal path is scaffolding, not completion.
 ## Notes For Future Agents
 
 - Treat the design spec and research docs as constraints, not inspiration-only reading
-- Preserve the repo's current feature boundary discipline
-- If a worktree or branch is only a scratch area, do not treat it as the canonical feature branch
+- Preserve the repo's current milestone discipline even when work lands on `dev`
+- If a worktree or branch is only a scratch area, do not treat it as the canonical development branch
 - Prefer adding or updating `docs/plans/` when a new major milestone starts
