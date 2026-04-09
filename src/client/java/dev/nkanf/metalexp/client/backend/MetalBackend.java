@@ -7,6 +7,7 @@ import com.mojang.blaze3d.systems.BackendCreationException;
 import com.mojang.blaze3d.systems.GpuBackend;
 import com.mojang.blaze3d.systems.GpuDevice;
 import dev.nkanf.metalexp.bridge.MetalBridge;
+import dev.nkanf.metalexp.bridge.MetalHostSurfaceBootstrap;
 import dev.nkanf.metalexp.bridge.MetalBridgeProbe;
 import dev.nkanf.metalexp.bridge.NativeMetalBridge;
 import org.lwjgl.glfw.GLFW;
@@ -86,10 +87,26 @@ public final class MetalBackend implements GpuBackend {
 			);
 		}
 
-		throw new BackendCreationException(
-			DEVICE_BACKEND_UNIMPLEMENTED_MESSAGE,
-			BackendCreationException.Reason.OTHER,
-			List.of("metal_device_backend")
+		MetalHostSurfaceBootstrap surfaceBootstrap = this.metalBridge.bootstrapSurface(
+			cocoaHostSurface.cocoaWindowHandle(),
+			cocoaHostSurface.cocoaViewHandle()
 		);
+		if (!surfaceBootstrap.isReady()) {
+			throw new BackendCreationException(
+				surfaceBootstrap.detail(),
+				BackendCreationException.Reason.OTHER,
+				surfaceBootstrap.missingCapabilities()
+			);
+		}
+
+		try {
+			throw new BackendCreationException(
+				DEVICE_BACKEND_UNIMPLEMENTED_MESSAGE,
+				BackendCreationException.Reason.OTHER,
+				List.of("metal_device_backend")
+			);
+		} finally {
+			this.metalBridge.releaseSurface(surfaceBootstrap.nativeSurfaceHandle());
+		}
 	}
 }

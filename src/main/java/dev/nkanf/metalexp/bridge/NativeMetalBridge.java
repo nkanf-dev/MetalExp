@@ -71,6 +71,55 @@ public final class NativeMetalBridge implements MetalBridge {
 		}
 	}
 
+	@Override
+	public MetalHostSurfaceBootstrap bootstrapSurface(long cocoaWindowHandle, long cocoaViewHandle) {
+		MetalBridgeProbe surfaceProbe = probeSurface(cocoaWindowHandle, cocoaViewHandle);
+		if (!surfaceProbe.isReady()) {
+			return new MetalHostSurfaceBootstrap(
+				0L,
+				surfaceProbe.detail(),
+				surfaceProbe.missingCapabilities(),
+				surfaceProbe.libraryLoaded(),
+				surfaceProbe.nativeEntryPointReached()
+			);
+		}
+
+		try {
+			NativeMetalBridgeSurfaceBootstrapResult nativeResult = bootstrapSurface0(cocoaWindowHandle, cocoaViewHandle);
+			return fromNativeSurfaceResult(nativeResult);
+		} catch (UnsatisfiedLinkError error) {
+			return new MetalHostSurfaceBootstrap(
+				0L,
+				error.getMessage() == null ? "Metal bridge native surface bootstrap entrypoint is missing." : error.getMessage(),
+				List.of("native_surface_bootstrap_entrypoint"),
+				true,
+				false
+			);
+		} catch (RuntimeException error) {
+			return new MetalHostSurfaceBootstrap(
+				0L,
+				error.getMessage() == null ? "Metal bridge native surface bootstrap failed." : error.getMessage(),
+				List.of("native_surface_bootstrap_runtime"),
+				true,
+				true
+			);
+		}
+	}
+
+	@Override
+	public void releaseSurface(long nativeSurfaceHandle) {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded() || nativeSurfaceHandle == 0L) {
+			return;
+		}
+
+		try {
+			releaseSurface0(nativeSurfaceHandle);
+		} catch (UnsatisfiedLinkError | RuntimeException ignored) {
+			// Surface release is best-effort during this bootstrap milestone.
+		}
+	}
+
 	private MetalBridgeProbe fromLoadResult(MetalBridgeLoadResult loadResult) {
 		MetalBridgeProbeStatus status = switch (loadResult.status()) {
 			case UNSUPPORTED_OS -> MetalBridgeProbeStatus.UNSUPPORTED_OS;
@@ -124,7 +173,39 @@ public final class NativeMetalBridge implements MetalBridge {
 		);
 	}
 
+	private MetalHostSurfaceBootstrap fromNativeSurfaceResult(NativeMetalBridgeSurfaceBootstrapResult nativeResult) {
+		if (nativeResult == null) {
+			return new MetalHostSurfaceBootstrap(
+				0L,
+				"Metal bridge native surface bootstrap returned no result.",
+				List.of("native_surface_bootstrap_result"),
+				true,
+				true
+			);
+		}
+
+		List<String> missingCapabilities = nativeResult.missingCapabilities() == null
+			? List.of()
+			: Arrays.asList(nativeResult.missingCapabilities());
+
+		long nativeSurfaceHandle = nativeResult.outcomeCode() == NativeMetalBridgeSurfaceBootstrapResult.OUTCOME_READY
+			? nativeResult.nativeSurfaceHandle()
+			: 0L;
+
+		return new MetalHostSurfaceBootstrap(
+			nativeSurfaceHandle,
+			nativeResult.detail(),
+			missingCapabilities,
+			true,
+			true
+		);
+	}
+
 	private static native NativeMetalBridgeProbeResult probe0();
 
 	private static native NativeMetalBridgeProbeResult probeSurface0(long cocoaWindowHandle, long cocoaViewHandle);
+
+	private static native NativeMetalBridgeSurfaceBootstrapResult bootstrapSurface0(long cocoaWindowHandle, long cocoaViewHandle);
+
+	private static native void releaseSurface0(long nativeSurfaceHandle);
 }
