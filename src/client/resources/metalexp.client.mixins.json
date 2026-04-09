@@ -3,7 +3,8 @@
 	"package": "dev.nkanf.metalexp.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
-		"ClientBootstrapMixin"
+		"ClientBootstrapMixin",
+		"MinecraftBackendNegotiationMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
