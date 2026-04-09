@@ -1,0 +1,36 @@
+<svg width="720" height="240" viewBox="0 0 720 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="40" y1="24" x2="680" y2="216" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1117"/>
+      <stop offset="0.5" stop-color="#16202B"/>
+      <stop offset="1" stop-color="#22303A"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="98" y1="58" x2="198" y2="182" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4F7FA"/>
+      <stop offset="0.34" stop-color="#B8C4D0"/>
+      <stop offset="0.64" stop-color="#8191A0"/>
+      <stop offset="1" stop-color="#ECF1F5"/>
+    </linearGradient>
+    <linearGradient id="ember" x1="148" y1="66" x2="206" y2="164" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB36A"/>
+      <stop offset="1" stop-color="#E14F32"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="720" height="240" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#05080C" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <rect x="24" y="24" width="672" height="192" rx="28" fill="url(#bg)"/>
+    <rect x="24.5" y="24.5" width="671" height="191" rx="27.5" stroke="#3B4A57"/>
+  </g>
+
+  <path d="M74 166V74H104L146 135L188 74H218V166H192V113L150 170H142L100 113V166H74Z" fill="url(#metal)"/>
+  <path d="M156 82L184 82L226 166H196L182 140H146L156 82Z" fill="url(#ember)" fill-opacity="0.9"/>
+  <circle cx="150" cy="120" r="72" stroke="#6A7A88" stroke-opacity="0.55" stroke-width="2"/>
+  <path d="M260 90H566" stroke="#5D6C78" stroke-width="2" stroke-linecap="round"/>
+  <path d="M260 150H626" stroke="#3C4A55" stroke-width="2" stroke-linecap="round"/>
+
+  <text x="260" y="126" fill="#F4F7FA" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="58" font-weight="700" letter-spacing="1.5">MetalExp</text>
+  <text x="262" y="164" fill="#B7C3CE" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="20" font-weight="500" letter-spacing="2.8">NATIVE METAL BACKEND EXPERIMENT</text>
+</svg>

@@ -1,31 +1,78 @@
 # MetalExp
 
-`MetalExp` is a Fabric mod project scaffold for a native Metal rendering experiment on modern Minecraft snapshots.
+<p align="center">
+  <img src="docs/assets/metalexp-logo.svg" alt="MetalExp logo" width="720" />
+</p>
 
-The root layout stays close to a typical Fabric mod:
+<p align="center">
+  Experimental Fabric-delivered backend work for bringing a real native Metal renderer to modern Minecraft snapshots on macOS.
+</p>
 
-- `src/main` and `src/client` hold the mod entrypoints, resources, and mixin configs
-- `build.gradle`, `gradle.properties`, and the wrapper remain in the root
+## What MetalExp Is
 
-The project also reserves space for the larger renderer effort:
+`MetalExp` is not a lightweight graphics tweak and it is not a Vulkan-to-Metal wrapper.
+The project aims to introduce a real `MetalBackend` alongside Mojang's OpenGL and Vulkan backends, with project-owned settings, startup negotiation, diagnostics, and a native macOS bridge.
 
-- `native/` for macOS Cocoa and Metal bridge code
-- `shared/` for cross-cutting models and diagnostics
-- `docs/` for design notes and implementation plans
+## Current Status
 
-## Current Milestone
+The repository currently covers the bootstrap side of the project:
 
-The current codebase only implements the bootstrap and backend-selection core:
+- project-owned graphics API preference and config persistence
+- startup backend planning with fallback and strict modes
+- startup diagnostics logging
+- video settings replacement with a `MetalExp` graphics API option
+- startup backend negotiation override driven by `MetalExp` config
 
-- project-owned backend selection config
-- fallback and strict-mode planning
-- startup diagnostics
-- a client startup hook for future negotiation work
+What is still missing:
 
-It does not yet replace the in-game option screen or create a real Metal backend.
+- a real `MetalBackend`
+- native Cocoa and `CAMetalLayer` bring-up
+- Metal device, surface, and resource lifecycle
+- shader translation and pipeline compilation
+- rendering viability in menus and world rendering
 
-## Next Steps
+Today, selecting `METAL` still means scaffolding rather than a working renderer. In fallback mode the current code drops to Vulkan/OpenGL, and in strict mode it fails fast until a native Metal backend exists.
 
-1. Retarget dependency versions for the exact Minecraft snapshot you want to build against.
-2. Replace the placeholder mixins with graphics-settings and backend-negotiation hooks.
-3. Start the native bridge in `native/`.
+## Target Environment
+
+- Platform: macOS
+- Minecraft target: `26.2-snapshot-1`
+- Loader: Fabric Loader
+- Java: 25
+
+## Repository Layout
+
+- `src/main` and `src/client`: Fabric entrypoints, mixins, config, diagnostics, and Minecraft-facing integration points
+- `native/`: reserved for the macOS Cocoa and Metal bridge
+- `shared/`: reserved for shared models, diagnostics payloads, and future backend-facing types
+- `docs/`: design specs, milestone plans, and reverse-engineering notes
+
+## Development Flow
+
+`dev` is the primary development branch for this repository.
+Unless explicitly requested otherwise, ongoing implementation and cleanup work should land on `dev`.
+
+Canonical project references:
+
+1. `docs/specs/2026-04-09-metalexp-design.md`
+2. `docs/plans/2026-04-09-metalexp-bootstrap-plan.md`
+3. `docs/research/2026-04-09-minecraft-26.2-vulkan-metal-research_cn.md`
+
+## Near-Term Roadmap
+
+1. Replace the current Metal scaffolding with a real `MetalBackend` entry path.
+2. Bring up the native macOS bridge for window extraction, `CAMetalLayer`, device, queue, and drawable lifecycle.
+3. Build surface/device/resource fundamentals.
+4. Add the shader toolchain path from GLSL to SPIR-V to MSL.
+5. Reach first rendering viability for startup, menu entry, resize, and shutdown.
+
+## Building
+
+```bash
+./gradlew test
+./gradlew build
+```
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE`.

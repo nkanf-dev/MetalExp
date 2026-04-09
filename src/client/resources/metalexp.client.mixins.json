@@ -3,7 +3,13 @@
 	"package": "dev.nkanf.metalexp.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
-		"ClientBootstrapMixin"
+		"ClientBootstrapMixin",
+<<<<<<< dev/backend-negotiation
+		"MinecraftBackendNegotiationMixin"
+=======
+		"VideoSettingsRestartWarningMixin",
+		"VideoSettingsDisplayOptionsMixin"
+>>>>>>> dev/bootstrap-diagnostics
 	],
 	"injectors": {
 		"defaultRequire": 1
