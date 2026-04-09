@@ -23,6 +23,7 @@ The repository currently covers the bootstrap side of the project:
 - video settings replacement with a `MetalExp` graphics API option
 - startup backend negotiation override driven by `MetalExp` config
 - a Java-side `MetalBackend` stub that is actually attempted during startup negotiation
+- a native bridge probe boundary for library loading and first Metal capability checks
 
 What is still missing:
 
@@ -32,7 +33,7 @@ What is still missing:
 - shader translation and pipeline compilation
 - rendering viability in menus and world rendering
 
-Today, selecting `METAL` still means scaffolding rather than a working renderer. The game now attempts a Java-side `MetalBackend` stub first; in fallback mode it then falls through to Vulkan/OpenGL, and in strict mode startup stops after the Metal backend creation failure.
+Today, selecting `METAL` still means scaffolding rather than a working renderer. The game now attempts a Java-side `MetalBackend` first, probes the native bridge for `CAMetalLayer`, `MTLDevice`, and `MTLCommandQueue` readiness, and then either falls through to Vulkan/OpenGL in fallback mode or stops after the Metal backend failure in strict mode.
 
 ## Target Environment
 

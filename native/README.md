@@ -12,5 +12,5 @@ Planned responsibilities:
 Current scope:
 
 - a minimal JNI-loadable stub library target named `metalexp_native`
-- a native probe entrypoint that returns a structured "stub not implemented yet" result
-- no Cocoa extraction, `CAMetalLayer`, `MTLDevice`, or drawable lifecycle work yet
+- a native probe entrypoint that checks `CAMetalLayer` availability, default `MTLDevice` access, and `MTLCommandQueue` creation
+- no Cocoa window extraction, surface attachment, or drawable lifecycle work yet
