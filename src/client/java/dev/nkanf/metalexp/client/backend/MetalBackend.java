@@ -7,8 +7,6 @@ import com.mojang.blaze3d.systems.BackendCreationException;
 import com.mojang.blaze3d.systems.GpuBackend;
 import com.mojang.blaze3d.systems.GpuDevice;
 import dev.nkanf.metalexp.bridge.MetalBridge;
-import dev.nkanf.metalexp.bridge.MetalHostSurfaceBootstrap;
-import dev.nkanf.metalexp.bridge.MetalBridgeProbe;
 import dev.nkanf.metalexp.bridge.NativeMetalBridge;
 import org.lwjgl.glfw.GLFW;
 
@@ -17,7 +15,6 @@ import java.util.Objects;
 
 public final class MetalBackend implements GpuBackend {
 	private static final String WINDOW_CREATION_FAILURE_MESSAGE = "Failed to create window for Metal";
-	private static final String WINDOW_HANDLE_MISSING_MESSAGE = "Metal backend requires a live GLFW window handle.";
 	private static final String DEVICE_BACKEND_UNIMPLEMENTED_MESSAGE = "Metal bridge probe succeeded, but the Java Metal device backend is not implemented yet.";
 	private final MetalBridge metalBridge;
 	private final CocoaHostSurfaceResolver cocoaHostSurfaceResolver;
@@ -57,56 +54,16 @@ public final class MetalBackend implements GpuBackend {
 
 	@Override
 	public GpuDevice createDevice(long window, ShaderSource defaultShaderSource, GpuDebugOptions debugOptions) throws BackendCreationException {
-		if (window == 0L) {
-			throw new BackendCreationException(
-				WINDOW_HANDLE_MISSING_MESSAGE,
-				BackendCreationException.Reason.OTHER,
-				List.of("glfw_window_handle")
-			);
-		}
-
-		MetalBridgeProbe probe = this.metalBridge.probe();
-		if (!probe.isReady()) {
-			throw new BackendCreationException(
-				probe.detail(),
-				BackendCreationException.Reason.OTHER,
-				probe.missingCapabilities()
-			);
-		}
-
-		CocoaHostSurface cocoaHostSurface = this.cocoaHostSurfaceResolver.resolve(window);
-		MetalBridgeProbe surfaceProbe = this.metalBridge.probeSurface(
-			cocoaHostSurface.cocoaWindowHandle(),
-			cocoaHostSurface.cocoaViewHandle()
-		);
-		if (!surfaceProbe.isReady()) {
-			throw new BackendCreationException(
-				surfaceProbe.detail(),
-				BackendCreationException.Reason.OTHER,
-				surfaceProbe.missingCapabilities()
-			);
-		}
-
-		MetalHostSurfaceBootstrap surfaceBootstrap = this.metalBridge.bootstrapSurface(
-			cocoaHostSurface.cocoaWindowHandle(),
-			cocoaHostSurface.cocoaViewHandle()
-		);
-		if (!surfaceBootstrap.isReady()) {
-			throw new BackendCreationException(
-				surfaceBootstrap.detail(),
-				BackendCreationException.Reason.OTHER,
-				surfaceBootstrap.missingCapabilities()
-			);
-		}
-
-		try {
+		try (MetalBackendBootstrapContext bootstrapContext = MetalBackendBootstrapContext.bootstrap(
+			this.metalBridge,
+			this.cocoaHostSurfaceResolver,
+			window
+		)) {
 			throw new BackendCreationException(
 				DEVICE_BACKEND_UNIMPLEMENTED_MESSAGE,
 				BackendCreationException.Reason.OTHER,
 				List.of("metal_device_backend")
 			);
-		} finally {
-			this.metalBridge.releaseSurface(surfaceBootstrap.nativeSurfaceHandle());
 		}
 	}
 }
