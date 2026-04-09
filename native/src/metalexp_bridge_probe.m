@@ -17,7 +17,9 @@ typedef struct metalexp_host_surface {
 	void *view;
 	void *layer;
 	void *original_layer;
+	void *current_drawable;
 	BOOL original_wants_layer;
+	BOOL display_sync_enabled;
 } metalexp_host_surface;
 
 static jobjectArray metalexp_create_string_array(JNIEnv *env, const char *capability) {
@@ -103,6 +105,9 @@ static void metalexp_restore_bootstrapped_surface(metalexp_host_surface *surface
 
 	if (surface->original_layer != NULL) {
 		(void)CFBridgingRelease(surface->original_layer);
+	}
+	if (surface->current_drawable != NULL) {
+		(void)CFBridgingRelease(surface->current_drawable);
 	}
 	if (surface->layer != NULL) {
 		(void)CFBridgingRelease(surface->layer);
@@ -334,6 +339,8 @@ static jobject metalexp_bootstrap_surface(JNIEnv *env, jlong cocoa_window_handle
 	surface->layer = (void *)CFBridgingRetain(layer);
 	surface->original_layer = view.layer == nil ? NULL : (void *)CFBridgingRetain(view.layer);
 	surface->original_wants_layer = view.wantsLayer;
+	surface->current_drawable = NULL;
+	surface->display_sync_enabled = YES;
 
 	@try {
 		[view setWantsLayer:YES];
@@ -381,6 +388,90 @@ static jobject metalexp_bootstrap_surface(JNIEnv *env, jlong cocoa_window_handle
 		NULL,
 		(jlong)(uintptr_t)surface
 	);
+}
+
+static metalexp_host_surface *metalexp_require_surface(jlong native_surface_handle, const char *operation_name) {
+	if (native_surface_handle == 0) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:[NSString stringWithFormat:@"Metal surface %@ requires a non-zero native handle.", [NSString stringWithUTF8String:operation_name]]
+			userInfo:nil];
+	}
+
+	metalexp_host_surface *surface = (metalexp_host_surface *)(uintptr_t)native_surface_handle;
+	if (surface->view == NULL || surface->layer == NULL) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:[NSString stringWithFormat:@"Metal surface %@ received an incomplete native surface record.", [NSString stringWithUTF8String:operation_name]]
+			userInfo:nil];
+	}
+
+	return surface;
+}
+
+static void metalexp_configure_surface(jlong native_surface_handle, jint width, jint height, jboolean vsync) {
+	if (![NSThread isMainThread]) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface configure must run on the main AppKit thread."
+			userInfo:nil];
+	}
+
+	if (width <= 0 || height <= 0) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface configure requires positive drawable dimensions."
+			userInfo:nil];
+	}
+
+	metalexp_host_surface *surface = metalexp_require_surface(native_surface_handle, "configure");
+	CAMetalLayer *layer = (__bridge CAMetalLayer *)surface->layer;
+	NSView *view = (__bridge NSView *)surface->view;
+	CGFloat contents_scale = layer.contentsScale > 0.0 ? layer.contentsScale : 1.0;
+
+	layer.frame = view.bounds;
+	layer.drawableSize = CGSizeMake((CGFloat)width, (CGFloat)height);
+	layer.contentsScale = contents_scale;
+	layer.displaySyncEnabled = vsync == JNI_TRUE;
+	surface->display_sync_enabled = vsync == JNI_TRUE;
+}
+
+static void metalexp_acquire_surface(jlong native_surface_handle) {
+	if (![NSThread isMainThread]) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface acquire must run on the main AppKit thread."
+			userInfo:nil];
+	}
+
+	metalexp_host_surface *surface = metalexp_require_surface(native_surface_handle, "acquire");
+	CAMetalLayer *layer = (__bridge CAMetalLayer *)surface->layer;
+	if (surface->current_drawable != NULL) {
+		(void)CFBridgingRelease(surface->current_drawable);
+		surface->current_drawable = NULL;
+	}
+
+	id<CAMetalDrawable> drawable = [layer nextDrawable];
+	if (drawable == nil) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"CAMetalLayer did not provide a drawable during acquire."
+			userInfo:nil];
+	}
+
+	surface->current_drawable = (void *)CFBridgingRetain(drawable);
+}
+
+static void metalexp_present_surface(jlong native_surface_handle) {
+	if (![NSThread isMainThread]) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface present must run on the main AppKit thread."
+			userInfo:nil];
+	}
+
+	metalexp_host_surface *surface = metalexp_require_surface(native_surface_handle, "present");
+	if (surface->current_drawable == NULL) {
+		return;
+	}
+
+	id<CAMetalDrawable> drawable = (__bridge id<CAMetalDrawable>)surface->current_drawable;
+	[drawable present];
+	(void)CFBridgingRelease(surface->current_drawable);
+	surface->current_drawable = NULL;
 }
 
 JNIEXPORT jobject JNICALL Java_dev_nkanf_metalexp_bridge_NativeMetalBridge_probe0(JNIEnv *env, jclass clazz) {
@@ -470,5 +561,32 @@ JNIEXPORT void JNICALL Java_dev_nkanf_metalexp_bridge_NativeMetalBridge_releaseS
 
 	@autoreleasepool {
 		metalexp_restore_bootstrapped_surface((metalexp_host_surface *)(uintptr_t)native_surface_handle);
+	}
+}
+
+JNIEXPORT void JNICALL Java_dev_nkanf_metalexp_bridge_NativeMetalBridge_configureSurface0(JNIEnv *env, jclass clazz, jlong native_surface_handle, jint width, jint height, jboolean vsync) {
+	(void) env;
+	(void) clazz;
+
+	@autoreleasepool {
+		metalexp_configure_surface(native_surface_handle, width, height, vsync);
+	}
+}
+
+JNIEXPORT void JNICALL Java_dev_nkanf_metalexp_bridge_NativeMetalBridge_acquireSurface0(JNIEnv *env, jclass clazz, jlong native_surface_handle) {
+	(void) env;
+	(void) clazz;
+
+	@autoreleasepool {
+		metalexp_acquire_surface(native_surface_handle);
+	}
+}
+
+JNIEXPORT void JNICALL Java_dev_nkanf_metalexp_bridge_NativeMetalBridge_presentSurface0(JNIEnv *env, jclass clazz, jlong native_surface_handle) {
+	(void) env;
+	(void) clazz;
+
+	@autoreleasepool {
+		metalexp_present_surface(native_surface_handle);
 	}
 }

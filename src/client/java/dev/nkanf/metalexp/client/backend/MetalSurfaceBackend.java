@@ -6,23 +6,32 @@ import com.mojang.blaze3d.systems.GpuSurfaceBackend;
 import com.mojang.blaze3d.systems.SurfaceException;
 import com.mojang.blaze3d.textures.GpuTextureView;
 
+import java.util.Objects;
+
 final class MetalSurfaceBackend implements GpuSurfaceBackend {
-	private final MetalSurfaceDescriptor surfaceDescriptor;
+	private final MetalSurfaceLease surfaceLease;
 	private GpuSurface.Configuration configuration;
+	private boolean acquired;
 	private boolean closed;
 
-	MetalSurfaceBackend(MetalSurfaceDescriptor surfaceDescriptor) {
-		this.surfaceDescriptor = surfaceDescriptor;
+	MetalSurfaceBackend(MetalSurfaceLease surfaceLease) {
+		this.surfaceLease = Objects.requireNonNull(surfaceLease, "surfaceLease");
 	}
 
 	MetalSurfaceDescriptor descriptor() {
-		return this.surfaceDescriptor;
+		return this.surfaceLease.descriptor();
 	}
 
 	@Override
 	public void configure(GpuSurface.Configuration configuration) throws SurfaceException {
-		if (this.closed) {
+		if (this.closed || this.surfaceLease.isClosed()) {
 			throw new SurfaceException("Metal surface backend is closed.");
+		}
+
+		try {
+			this.surfaceLease.configure(configuration.width(), configuration.height(), configuration.vsync());
+		} catch (IllegalStateException | IllegalArgumentException error) {
+			throw new SurfaceException(error.getMessage());
 		}
 
 		this.configuration = configuration;
@@ -35,7 +44,17 @@ final class MetalSurfaceBackend implements GpuSurfaceBackend {
 
 	@Override
 	public void acquireNextTexture() throws SurfaceException {
-		throw new SurfaceException("Metal surface acquisition is not implemented yet.");
+		if (this.closed || this.surfaceLease.isClosed()) {
+			throw new SurfaceException("Metal surface backend is closed.");
+		}
+
+		try {
+			this.surfaceLease.acquire();
+			this.acquired = true;
+		} catch (IllegalStateException | IllegalArgumentException error) {
+			this.acquired = false;
+			throw new SurfaceException(error.getMessage());
+		}
 	}
 
 	@Override
@@ -45,11 +64,30 @@ final class MetalSurfaceBackend implements GpuSurfaceBackend {
 
 	@Override
 	public void present() {
-		throw new UnsupportedOperationException("Metal surface present is not implemented yet.");
+		if (this.closed || !this.acquired) {
+			return;
+		}
+
+		this.surfaceLease.present();
+		this.acquired = false;
 	}
 
 	@Override
 	public void close() {
+		if (this.closed) {
+			return;
+		}
+
 		this.closed = true;
+		this.acquired = false;
+		this.surfaceLease.close();
+	}
+
+	boolean isAcquired() {
+		return this.acquired;
+	}
+
+	boolean isClosed() {
+		return this.closed;
 	}
 }

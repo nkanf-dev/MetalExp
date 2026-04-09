@@ -15,7 +15,6 @@ import java.util.Objects;
 
 public final class MetalBackend implements GpuBackend {
 	private static final String WINDOW_CREATION_FAILURE_MESSAGE = "Failed to create window for Metal";
-	private static final String DEVICE_BACKEND_UNIMPLEMENTED_MESSAGE = "Metal bridge probe succeeded, but the Java Metal device backend is not implemented yet.";
 	private final MetalBridge metalBridge;
 	private final CocoaHostSurfaceResolver cocoaHostSurfaceResolver;
 
@@ -54,16 +53,17 @@ public final class MetalBackend implements GpuBackend {
 
 	@Override
 	public GpuDevice createDevice(long window, ShaderSource defaultShaderSource, GpuDebugOptions debugOptions) throws BackendCreationException {
-		try (MetalBackendBootstrapContext bootstrapContext = MetalBackendBootstrapContext.bootstrap(
+		MetalBackendBootstrapContext bootstrapContext = MetalBackendBootstrapContext.bootstrap(
 			this.metalBridge,
 			this.cocoaHostSurfaceResolver,
 			window
-		)) {
-			throw new BackendCreationException(
-				DEVICE_BACKEND_UNIMPLEMENTED_MESSAGE,
-				BackendCreationException.Reason.OTHER,
-				List.of("metal_device_backend")
-			);
+		);
+
+		try {
+			return new GpuDevice(new MetalDeviceBackend(bootstrapContext.detachSurfaceLease()));
+		} catch (RuntimeException | Error error) {
+			bootstrapContext.close();
+			throw error;
 		}
 	}
 }

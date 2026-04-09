@@ -138,5 +138,17 @@ class MetalBackendBootstrapContextTest {
 			this.releasedHandle.set(nativeSurfaceHandle);
 			this.releaseCount.incrementAndGet();
 		}
+
+		@Override
+		public void configureSurface(long nativeSurfaceHandle, int width, int height, boolean vsync) {
+		}
+
+		@Override
+		public void acquireSurface(long nativeSurfaceHandle) {
+		}
+
+		@Override
+		public void presentSurface(long nativeSurfaceHandle) {
+		}
 	}
 }

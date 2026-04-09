@@ -7,5 +7,11 @@ public interface MetalBridge {
 
 	MetalHostSurfaceBootstrap bootstrapSurface(long cocoaWindowHandle, long cocoaViewHandle);
 
+	void configureSurface(long nativeSurfaceHandle, int width, int height, boolean vsync);
+
+	void acquireSurface(long nativeSurfaceHandle);
+
+	void presentSurface(long nativeSurfaceHandle);
+
 	void releaseSurface(long nativeSurfaceHandle);
 }

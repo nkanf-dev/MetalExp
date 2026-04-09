@@ -129,6 +129,21 @@ public final class NativeMetalBridge implements MetalBridge {
 		}
 	}
 
+	@Override
+	public void configureSurface(long nativeSurfaceHandle, int width, int height, boolean vsync) {
+		runSurfaceOperation(nativeSurfaceHandle, () -> configureSurface0(nativeSurfaceHandle, width, height, vsync), "surface configure");
+	}
+
+	@Override
+	public void acquireSurface(long nativeSurfaceHandle) {
+		runSurfaceOperation(nativeSurfaceHandle, () -> acquireSurface0(nativeSurfaceHandle), "surface acquire");
+	}
+
+	@Override
+	public void presentSurface(long nativeSurfaceHandle) {
+		runSurfaceOperation(nativeSurfaceHandle, () -> presentSurface0(nativeSurfaceHandle), "surface present");
+	}
+
 	private MetalBridgeProbe fromLoadResult(MetalBridgeLoadResult loadResult) {
 		MetalBridgeProbeStatus status = switch (loadResult.status()) {
 			case UNSUPPORTED_OS -> MetalBridgeProbeStatus.UNSUPPORTED_OS;
@@ -216,11 +231,42 @@ public final class NativeMetalBridge implements MetalBridge {
 		);
 	}
 
+	private void runSurfaceOperation(long nativeSurfaceHandle, Runnable operation, String operationName) {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded()) {
+			throw new IllegalStateException(loadResult.detail());
+		}
+
+		if (nativeSurfaceHandle == 0L) {
+			throw new IllegalArgumentException("Metal " + operationName + " requires a non-zero native surface handle.");
+		}
+
+		try {
+			operation.run();
+		} catch (UnsatisfiedLinkError error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native " + operationName + " entrypoint is missing." : error.getMessage(),
+				error
+			);
+		} catch (RuntimeException error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native " + operationName + " failed." : error.getMessage(),
+				error
+			);
+		}
+	}
+
 	private static native NativeMetalBridgeProbeResult probe0();
 
 	private static native NativeMetalBridgeProbeResult probeSurface0(long cocoaWindowHandle, long cocoaViewHandle);
 
 	private static native NativeMetalBridgeSurfaceBootstrapResult bootstrapSurface0(long cocoaWindowHandle, long cocoaViewHandle);
+
+	private static native void configureSurface0(long nativeSurfaceHandle, int width, int height, boolean vsync);
+
+	private static native void acquireSurface0(long nativeSurfaceHandle);
+
+	private static native void presentSurface0(long nativeSurfaceHandle);
 
 	private static native void releaseSurface0(long nativeSurfaceHandle);
 }

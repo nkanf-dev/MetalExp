@@ -1,6 +1,8 @@
 package dev.nkanf.metalexp.client.backend;
 
 import com.mojang.blaze3d.systems.BackendCreationException;
+import com.mojang.blaze3d.systems.GpuDevice;
+import com.mojang.blaze3d.systems.GpuSurface;
 import dev.nkanf.metalexp.bridge.MetalBridge;
 import dev.nkanf.metalexp.bridge.MetalHostSurfaceBootstrap;
 import dev.nkanf.metalexp.bridge.MetalBridgeProbe;
@@ -8,6 +10,7 @@ import dev.nkanf.metalexp.bridge.MetalBridgeProbeStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -67,25 +70,29 @@ class MetalBackendTest {
 	}
 
 	@Test
-	void createDeviceStillFailsUntilJavaDeviceBackendExistsAfterReadySurfaceProbe() {
+	void createDeviceReturnsGpuDeviceAndTransfersSurfaceLifetime() throws BackendCreationException {
 		AtomicLong releasedHandle = new AtomicLong(-1L);
+		AtomicInteger releaseCount = new AtomicInteger();
 		MetalBackend backend = new MetalBackend(
 			new FixedProbeBridge(
 				readyProbe("Metal probe succeeded."),
 				readyProbe("Metal surface probe succeeded."),
 				readyBootstrap("Metal surface bootstrap succeeded.", 42L),
-				releasedHandle
+				releasedHandle,
+				releaseCount
 			),
 			window -> new CocoaHostSurface(1L, 2L)
 		);
 
-		BackendCreationException exception = assertThrows(
-			BackendCreationException.class,
-			() -> backend.createDevice(123L, null, null)
-		);
+		GpuDevice device = backend.createDevice(123L, null, null);
+		assertEquals(-1L, releasedHandle.get());
 
-		assertEquals(List.of("metal_device_backend"), exception.getMissingCapabilities());
+		GpuSurface surface = device.createSurface(123L);
+		surface.close();
+		device.close();
+
 		assertEquals(42L, releasedHandle.get());
+		assertEquals(1, releaseCount.get());
 	}
 
 	@Test
@@ -164,10 +171,11 @@ class MetalBackendTest {
 		MetalBridgeProbe probe,
 		MetalBridgeProbe surfaceProbe,
 		MetalHostSurfaceBootstrap surfaceBootstrap,
-		AtomicLong releasedHandle
+		AtomicLong releasedHandle,
+		AtomicInteger releaseCount
 	) implements MetalBridge {
 		private FixedProbeBridge(MetalBridgeProbe probe, MetalBridgeProbe surfaceProbe, MetalHostSurfaceBootstrap surfaceBootstrap) {
-			this(probe, surfaceProbe, surfaceBootstrap, new AtomicLong(-1L));
+			this(probe, surfaceProbe, surfaceBootstrap, new AtomicLong(-1L), new AtomicInteger());
 		}
 
 		@Override
@@ -188,6 +196,19 @@ class MetalBackendTest {
 		@Override
 		public void releaseSurface(long nativeSurfaceHandle) {
 			this.releasedHandle.set(nativeSurfaceHandle);
+			this.releaseCount.incrementAndGet();
+		}
+
+		@Override
+		public void configureSurface(long nativeSurfaceHandle, int width, int height, boolean vsync) {
+		}
+
+		@Override
+		public void acquireSurface(long nativeSurfaceHandle) {
+		}
+
+		@Override
+		public void presentSurface(long nativeSurfaceHandle) {
 		}
 	}
 }

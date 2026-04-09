@@ -15,6 +15,7 @@ final class MetalBackendBootstrapContext implements AutoCloseable {
 	private final CocoaHostSurface cocoaHostSurface;
 	private final MetalHostSurfaceBootstrap hostSurfaceBootstrap;
 	private boolean closed;
+	private boolean surfaceLeaseTransferred;
 
 	private MetalBackendBootstrapContext(MetalBridge metalBridge, CocoaHostSurface cocoaHostSurface, MetalHostSurfaceBootstrap hostSurfaceBootstrap) {
 		this.metalBridge = Objects.requireNonNull(metalBridge, "metalBridge");
@@ -102,6 +103,19 @@ final class MetalBackendBootstrapContext implements AutoCloseable {
 		);
 	}
 
+	MetalSurfaceLease detachSurfaceLease() {
+		if (this.closed) {
+			throw new IllegalStateException("Metal backend bootstrap context is already closed.");
+		}
+
+		if (this.surfaceLeaseTransferred) {
+			throw new IllegalStateException("Metal surface lease has already been detached.");
+		}
+
+		this.surfaceLeaseTransferred = true;
+		return new MetalSurfaceLease(this.metalBridge, this.surfaceDescriptor());
+	}
+
 	@Override
 	public void close() {
 		if (this.closed) {
@@ -109,6 +123,8 @@ final class MetalBackendBootstrapContext implements AutoCloseable {
 		}
 
 		this.closed = true;
-		this.metalBridge.releaseSurface(this.hostSurfaceBootstrap.nativeSurfaceHandle());
+		if (!this.surfaceLeaseTransferred) {
+			this.metalBridge.releaseSurface(this.hostSurfaceBootstrap.nativeSurfaceHandle());
+		}
 	}
 }
