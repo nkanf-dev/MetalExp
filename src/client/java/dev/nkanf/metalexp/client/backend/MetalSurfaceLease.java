@@ -19,6 +19,10 @@ final class MetalSurfaceLease implements AutoCloseable {
 		return this.descriptor;
 	}
 
+	MetalBridge metalBridge() {
+		return this.metalBridge;
+	}
+
 	long nativeSurfaceHandle() {
 		return this.descriptor.nativeSurfaceHandle();
 	}
@@ -36,6 +40,11 @@ final class MetalSurfaceLease implements AutoCloseable {
 	void blitRgba8(ByteBuffer rgbaPixels, int width, int height) {
 		this.ensureOpen();
 		this.metalBridge.blitSurfaceRgba8(this.descriptor.nativeSurfaceHandle(), rgbaPixels, width, height);
+	}
+
+	void blitTexture(long nativeTextureHandle) {
+		this.ensureOpen();
+		this.metalBridge.blitSurfaceTexture(this.descriptor.nativeSurfaceHandle(), nativeTextureHandle);
 	}
 
 	void present() {

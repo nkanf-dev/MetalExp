@@ -13,6 +13,7 @@ import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
+import dev.nkanf.metalexp.bridge.MetalBridge;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -22,6 +23,9 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 final class MetalRenderPassBackend implements RenderPassBackend {
+	private static final int PIPELINE_KIND_GUI_COLOR = 1;
+	private static final int PIPELINE_KIND_GUI_TEXTURED = 2;
+	private static final int PIPELINE_KIND_PANORAMA = 3;
 	private static final float EPSILON = 0.0001F;
 
 	private final MetalTexture colorTarget;
@@ -137,24 +141,46 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 		}
 
 		requireDrawState();
-		VertexLayout layout = VertexLayout.from(this.pipeline.getVertexFormat());
-		ByteBuffer targetStorage = this.colorTarget.snapshotStorage(this.colorTargetMipLevel).order(ByteOrder.nativeOrder());
 		ByteBuffer vertexStorage = this.vertexBuffer.sliceStorage(0L, this.vertexBuffer.size()).order(ByteOrder.nativeOrder());
 		ByteBuffer indexStorage = this.indexBuffer.sliceStorage(0L, this.indexBuffer.size()).order(ByteOrder.nativeOrder());
-
-		for (int instance = 0; instance < instanceCount; instance++) {
-			for (int indexCursor = 0; indexCursor + 2 < indexCount; indexCursor += 3) {
-				int vertexIndex0 = baseVertex + readIndex(indexStorage, firstIndex + indexCursor, this.indexType);
-				int vertexIndex1 = baseVertex + readIndex(indexStorage, firstIndex + indexCursor + 1, this.indexType);
-				int vertexIndex2 = baseVertex + readIndex(indexStorage, firstIndex + indexCursor + 2, this.indexType);
-
-				Vertex vertex0 = readVertex(vertexStorage, layout, vertexIndex0);
-				Vertex vertex1 = readVertex(vertexStorage, layout, vertexIndex1);
-				Vertex vertex2 = readVertex(vertexStorage, layout, vertexIndex2);
-
-				rasterizeTriangle(targetStorage, layout, vertex0, vertex1, vertex2);
-			}
+		GpuBufferSlice projectionUniform = requireUniform("Projection");
+		GpuBufferSlice dynamicUniform = requireUniform("DynamicTransforms");
+		ByteBuffer projectionData = sliceUniformBuffer(projectionUniform);
+		ByteBuffer dynamicData = sliceUniformBuffer(dynamicUniform);
+		int pipelineKind = resolvePipelineKind();
+		BoundTexture sampler0 = this.boundTextures.get("Sampler0");
+		long sampler0TextureHandle = sampler0 == null ? 0L : sampler0.texture.nativeTextureHandle();
+		if (pipelineKind == PIPELINE_KIND_GUI_TEXTURED && sampler0TextureHandle == 0L) {
+			throw new IllegalStateException("Textured Metal GUI draw requires a native Sampler0 texture.");
 		}
+
+		MetalBridge metalBridge = this.colorTarget.metalBridge();
+		if (metalBridge == null || !this.colorTarget.hasNativeTextureHandle()) {
+			throw new IllegalStateException("Metal GUI draw requires a native-backed RGBA8 render target.");
+		}
+
+		metalBridge.drawGuiPass(
+			this.colorTarget.nativeTextureHandle(),
+			pipelineKind,
+			vertexStorage,
+			this.pipeline.getVertexFormat().getVertexSize(),
+			baseVertex,
+			indexStorage,
+			this.indexType.bytes,
+			firstIndex,
+			indexCount,
+			projectionData,
+			dynamicData,
+			sampler0TextureHandle,
+			sampler0 != null && (sampler0.sampler.getMagFilter() == FilterMode.LINEAR || sampler0.sampler.getMinFilter() == FilterMode.LINEAR),
+			sampler0 != null && sampler0.sampler.getAddressModeU() == AddressMode.REPEAT,
+			sampler0 != null && sampler0.sampler.getAddressModeV() == AddressMode.REPEAT,
+			this.scissorEnabled,
+			this.scissorX,
+			this.scissorY,
+			this.scissorWidth,
+			this.scissorHeight
+		);
 	}
 
 	@Override
@@ -347,6 +373,39 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 		if (this.indexBuffer == null || this.indexType == null) {
 			throw new IllegalStateException("Metal render pass requires an index buffer before drawing.");
 		}
+	}
+
+	private int resolvePipelineKind() {
+		if ("minecraft:pipeline/panorama".equals(this.pipeline.getLocation().toString())) {
+			return PIPELINE_KIND_PANORAMA;
+		}
+
+		VertexFormat vertexFormat = this.pipeline.getVertexFormat();
+		if (vertexFormat.contains(VertexFormatElement.UV0)) {
+			return PIPELINE_KIND_GUI_TEXTURED;
+		}
+
+		if (vertexFormat.contains(VertexFormatElement.COLOR)) {
+			return PIPELINE_KIND_GUI_COLOR;
+		}
+
+		throw new UnsupportedOperationException("Metal hardware GUI path does not support pipeline " + this.pipeline.getLocation() + " yet.");
+	}
+
+	private GpuBufferSlice requireUniform(String name) {
+		GpuBufferSlice slice = this.uniformSlices.get(name);
+		if (slice == null) {
+			throw new IllegalStateException("Metal GUI draw requires uniform " + name + ".");
+		}
+		return slice;
+	}
+
+	private ByteBuffer sliceUniformBuffer(GpuBufferSlice slice) {
+		if (!(slice.buffer() instanceof MetalBuffer metalBuffer)) {
+			throw new IllegalArgumentException("Metal GUI draw only supports Metal uniform buffers.");
+		}
+
+		return metalBuffer.sliceStorage(slice.offset(), slice.length()).order(ByteOrder.nativeOrder());
 	}
 
 	private static int readIndex(ByteBuffer indexStorage, int index, VertexFormat.IndexType indexType) {

@@ -76,7 +76,7 @@ final class MetalCommandEncoderBackend implements CommandEncoderBackend {
 			nativeImage.getPointer(),
 			nativeImage.getWidth() * nativeImage.getHeight() * nativeImage.format().components()
 		);
-		((MetalTexture) gpuTexture).writeRegion(source, nativeImage.format().components(), nativeImage.getWidth(), i, i2, i3, i4, i5, i6, i7);
+		((MetalTexture) gpuTexture).writeRegion(source, nativeImage.format().components(), nativeImage.getWidth(), i, i1, i2, i3, i4, i5, i6, i7);
 	}
 
 	@Override

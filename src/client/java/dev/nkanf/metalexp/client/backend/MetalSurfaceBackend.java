@@ -82,6 +82,11 @@ final class MetalSurfaceBackend implements GpuSurfaceBackend {
 			throw new IllegalArgumentException("Metal surface blit currently only supports RGBA8_UNORM textures.");
 		}
 
+		if (metalTexture.hasNativeTextureHandle()) {
+			this.surfaceLease.blitTexture(metalTexture.nativeTextureHandle());
+			return;
+		}
+
 		int mipLevel = gpuTextureView.baseMipLevel();
 		ByteBuffer pixels = metalTexture.readRegion(
 			mipLevel,

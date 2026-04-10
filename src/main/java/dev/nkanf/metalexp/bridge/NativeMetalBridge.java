@@ -158,6 +158,125 @@ public final class NativeMetalBridge implements MetalBridge {
 		runSurfaceOperation(nativeSurfaceHandle, () -> presentSurface0(nativeSurfaceHandle), "surface present");
 	}
 
+	@Override
+	public long createTexture2D(int width, int height, int mipLevels) {
+		return createTexture(width, height, 1, mipLevels, true, true, false);
+	}
+
+	@Override
+	public long createTexture(int width, int height, int depthOrLayers, int mipLevels, boolean renderAttachment, boolean shaderRead, boolean cubemapCompatible) {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded()) {
+			throw new IllegalStateException(loadResult.detail());
+		}
+
+		try {
+			return createTexture0(width, height, depthOrLayers, mipLevels, renderAttachment, shaderRead, cubemapCompatible);
+		} catch (UnsatisfiedLinkError error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native texture create entrypoint is missing." : error.getMessage(),
+				error
+			);
+		} catch (RuntimeException error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native texture create failed." : error.getMessage(),
+				error
+			);
+		}
+	}
+
+	@Override
+	public void uploadTextureRgba8(long nativeTextureHandle, int mipLevel, ByteBuffer rgbaPixels, int width, int height) {
+		uploadTextureRgba8(nativeTextureHandle, mipLevel, 0, rgbaPixels, width, height);
+	}
+
+	@Override
+	public void uploadTextureRgba8(long nativeTextureHandle, int mipLevel, int layer, ByteBuffer rgbaPixels, int width, int height) {
+		if (rgbaPixels == null) {
+			throw new IllegalArgumentException("Metal texture upload requires pixel data.");
+		}
+
+		runTextureOperation(
+			nativeTextureHandle,
+			() -> uploadTextureRgba80(nativeTextureHandle, mipLevel, layer, rgbaPixels, width, height),
+			"texture upload"
+		);
+	}
+
+	@Override
+	public void releaseTexture(long nativeTextureHandle) {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded() || nativeTextureHandle == 0L) {
+			return;
+		}
+
+		try {
+			releaseTexture0(nativeTextureHandle);
+		} catch (UnsatisfiedLinkError | RuntimeException ignored) {
+			// Texture release is best-effort during the experimental milestone.
+		}
+	}
+
+	@Override
+	public void drawGuiPass(
+		long nativeTargetTextureHandle,
+		int pipelineKind,
+		ByteBuffer vertexData,
+		int vertexStride,
+		int baseVertex,
+		ByteBuffer indexData,
+		int indexTypeBytes,
+		int firstIndex,
+		int indexCount,
+		ByteBuffer projectionUniform,
+		ByteBuffer dynamicTransformsUniform,
+		long nativeSampler0TextureHandle,
+		boolean linearFiltering,
+		boolean repeatU,
+		boolean repeatV,
+		boolean scissorEnabled,
+		int scissorX,
+		int scissorY,
+		int scissorWidth,
+		int scissorHeight
+	) {
+		if (vertexData == null || indexData == null || projectionUniform == null || dynamicTransformsUniform == null) {
+			throw new IllegalArgumentException("Metal GUI draw requires vertex, index, projection, and transform buffers.");
+		}
+
+		runTextureOperation(
+			nativeTargetTextureHandle,
+			() -> drawGuiPass0(
+				nativeTargetTextureHandle,
+				pipelineKind,
+				vertexData,
+				vertexStride,
+				baseVertex,
+				indexData,
+				indexTypeBytes,
+				firstIndex,
+				indexCount,
+				projectionUniform,
+				dynamicTransformsUniform,
+				nativeSampler0TextureHandle,
+				linearFiltering,
+				repeatU,
+				repeatV,
+				scissorEnabled,
+				scissorX,
+				scissorY,
+				scissorWidth,
+				scissorHeight
+			),
+			"gui draw"
+		);
+	}
+
+	@Override
+	public void blitSurfaceTexture(long nativeSurfaceHandle, long nativeTextureHandle) {
+		runSurfaceOperation(nativeSurfaceHandle, () -> blitSurfaceTexture0(nativeSurfaceHandle, nativeTextureHandle), "surface texture blit");
+	}
+
 	private MetalBridgeProbe fromLoadResult(MetalBridgeLoadResult loadResult) {
 		MetalBridgeProbeStatus status = switch (loadResult.status()) {
 			case UNSUPPORTED_OS -> MetalBridgeProbeStatus.UNSUPPORTED_OS;
@@ -270,6 +389,31 @@ public final class NativeMetalBridge implements MetalBridge {
 		}
 	}
 
+	private void runTextureOperation(long nativeTextureHandle, Runnable operation, String operationName) {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded()) {
+			throw new IllegalStateException(loadResult.detail());
+		}
+
+		if (nativeTextureHandle == 0L) {
+			throw new IllegalArgumentException("Metal " + operationName + " requires a non-zero native texture handle.");
+		}
+
+		try {
+			operation.run();
+		} catch (UnsatisfiedLinkError error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native " + operationName + " entrypoint is missing." : error.getMessage(),
+				error
+			);
+		} catch (RuntimeException error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native " + operationName + " failed." : error.getMessage(),
+				error
+			);
+		}
+	}
+
 	private static native NativeMetalBridgeProbeResult probe0();
 
 	private static native NativeMetalBridgeProbeResult probeSurface0(long cocoaWindowHandle, long cocoaViewHandle);
@@ -281,6 +425,37 @@ public final class NativeMetalBridge implements MetalBridge {
 	private static native void acquireSurface0(long nativeSurfaceHandle);
 
 	private static native void blitSurfaceRgba80(long nativeSurfaceHandle, ByteBuffer rgbaPixels, int width, int height);
+
+	private static native long createTexture0(int width, int height, int depthOrLayers, int mipLevels, boolean renderAttachment, boolean shaderRead, boolean cubemapCompatible);
+
+	private static native void uploadTextureRgba80(long nativeTextureHandle, int mipLevel, int layer, ByteBuffer rgbaPixels, int width, int height);
+
+	private static native void releaseTexture0(long nativeTextureHandle);
+
+	private static native void drawGuiPass0(
+		long nativeTargetTextureHandle,
+		int pipelineKind,
+		ByteBuffer vertexData,
+		int vertexStride,
+		int baseVertex,
+		ByteBuffer indexData,
+		int indexTypeBytes,
+		int firstIndex,
+		int indexCount,
+		ByteBuffer projectionUniform,
+		ByteBuffer dynamicTransformsUniform,
+		long nativeSampler0TextureHandle,
+		boolean linearFiltering,
+		boolean repeatU,
+		boolean repeatV,
+		boolean scissorEnabled,
+		int scissorX,
+		int scissorY,
+		int scissorWidth,
+		int scissorHeight
+	);
+
+	private static native void blitSurfaceTexture0(long nativeSurfaceHandle, long nativeTextureHandle);
 
 	private static native void presentSurface0(long nativeSurfaceHandle);
 
