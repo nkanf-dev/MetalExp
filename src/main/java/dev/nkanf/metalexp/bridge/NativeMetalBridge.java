@@ -2,6 +2,7 @@ package dev.nkanf.metalexp.bridge;
 
 import java.util.Arrays;
 import java.util.List;
+import java.nio.ByteBuffer;
 
 public final class NativeMetalBridge implements MetalBridge {
 	private static final NativeMetalBridge INSTANCE = new NativeMetalBridge();
@@ -140,8 +141,141 @@ public final class NativeMetalBridge implements MetalBridge {
 	}
 
 	@Override
+	public void blitSurfaceRgba8(long nativeSurfaceHandle, ByteBuffer rgbaPixels, int width, int height) {
+		requireDirectBuffer("Metal surface blit pixel data", rgbaPixels, (long) width * (long) height * 4L);
+
+		runSurfaceOperation(
+			nativeSurfaceHandle,
+			() -> blitSurfaceRgba80(nativeSurfaceHandle, rgbaPixels, width, height),
+			"surface blit"
+		);
+	}
+
+	@Override
 	public void presentSurface(long nativeSurfaceHandle) {
 		runSurfaceOperation(nativeSurfaceHandle, () -> presentSurface0(nativeSurfaceHandle), "surface present");
+	}
+
+	@Override
+	public long createTexture2D(int width, int height, int mipLevels) {
+		return createTexture(width, height, 1, mipLevels, true, true, false);
+	}
+
+	@Override
+	public long createTexture(int width, int height, int depthOrLayers, int mipLevels, boolean renderAttachment, boolean shaderRead, boolean cubemapCompatible) {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded()) {
+			throw new IllegalStateException(loadResult.detail());
+		}
+
+		try {
+			return createTexture0(width, height, depthOrLayers, mipLevels, renderAttachment, shaderRead, cubemapCompatible);
+		} catch (UnsatisfiedLinkError error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native texture create entrypoint is missing." : error.getMessage(),
+				error
+			);
+		} catch (RuntimeException error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native texture create failed." : error.getMessage(),
+				error
+			);
+		}
+	}
+
+	@Override
+	public void uploadTextureRgba8(long nativeTextureHandle, int mipLevel, ByteBuffer rgbaPixels, int width, int height) {
+		uploadTextureRgba8(nativeTextureHandle, mipLevel, 0, rgbaPixels, width, height);
+	}
+
+	@Override
+	public void uploadTextureRgba8(long nativeTextureHandle, int mipLevel, int layer, ByteBuffer rgbaPixels, int width, int height) {
+		requireDirectBuffer("Metal texture upload pixel data", rgbaPixels, (long) width * (long) height * 4L);
+
+		runTextureOperation(
+			nativeTextureHandle,
+			() -> uploadTextureRgba80(nativeTextureHandle, mipLevel, layer, rgbaPixels, width, height),
+			"texture upload"
+		);
+	}
+
+	@Override
+	public void releaseTexture(long nativeTextureHandle) {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded() || nativeTextureHandle == 0L) {
+			return;
+		}
+
+		try {
+			releaseTexture0(nativeTextureHandle);
+		} catch (UnsatisfiedLinkError | RuntimeException ignored) {
+			// Texture release is best-effort during the experimental milestone.
+		}
+	}
+
+	@Override
+	public void drawGuiPass(
+		long nativeTargetTextureHandle,
+		int pipelineKind,
+		ByteBuffer vertexData,
+		int vertexStride,
+		int baseVertex,
+		ByteBuffer indexData,
+		int indexTypeBytes,
+		int firstIndex,
+		int indexCount,
+		ByteBuffer projectionUniform,
+		ByteBuffer dynamicTransformsUniform,
+		long nativeSampler0TextureHandle,
+		boolean linearFiltering,
+		boolean repeatU,
+		boolean repeatV,
+		boolean scissorEnabled,
+		int scissorX,
+		int scissorY,
+		int scissorWidth,
+		int scissorHeight
+	) {
+		requireDirectBuffer("Metal GUI draw vertex buffer", vertexData, 1L);
+		requireDirectBuffer("Metal GUI draw index buffer", indexData, 1L);
+		requireDirectBuffer("Metal GUI draw projection buffer", projectionUniform, 64L);
+		requireDirectBuffer("Metal GUI draw transform buffer", dynamicTransformsUniform, 160L);
+
+		runTextureOperation(
+			nativeTargetTextureHandle,
+			() -> drawGuiPass0(
+				nativeTargetTextureHandle,
+				pipelineKind,
+				vertexData,
+				vertexStride,
+				baseVertex,
+				indexData,
+				indexTypeBytes,
+				firstIndex,
+				indexCount,
+				projectionUniform,
+				dynamicTransformsUniform,
+				nativeSampler0TextureHandle,
+				linearFiltering,
+				repeatU,
+				repeatV,
+				scissorEnabled,
+				scissorX,
+				scissorY,
+				scissorWidth,
+				scissorHeight
+			),
+			"gui draw"
+		);
+	}
+
+	@Override
+	public void blitSurfaceTexture(long nativeSurfaceHandle, long nativeTextureHandle) {
+		if (nativeTextureHandle == 0L) {
+			throw new IllegalArgumentException("Metal surface texture blit requires a non-zero native texture handle.");
+		}
+
+		runSurfaceOperation(nativeSurfaceHandle, () -> blitSurfaceTexture0(nativeSurfaceHandle, nativeTextureHandle), "surface texture blit");
 	}
 
 	private MetalBridgeProbe fromLoadResult(MetalBridgeLoadResult loadResult) {
@@ -256,6 +390,43 @@ public final class NativeMetalBridge implements MetalBridge {
 		}
 	}
 
+	private void runTextureOperation(long nativeTextureHandle, Runnable operation, String operationName) {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded()) {
+			throw new IllegalStateException(loadResult.detail());
+		}
+
+		if (nativeTextureHandle == 0L) {
+			throw new IllegalArgumentException("Metal " + operationName + " requires a non-zero native texture handle.");
+		}
+
+		try {
+			operation.run();
+		} catch (UnsatisfiedLinkError error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native " + operationName + " entrypoint is missing." : error.getMessage(),
+				error
+			);
+		} catch (RuntimeException error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native " + operationName + " failed." : error.getMessage(),
+				error
+			);
+		}
+	}
+
+	private static void requireDirectBuffer(String description, ByteBuffer buffer, long minimumCapacity) {
+		if (buffer == null) {
+			throw new IllegalArgumentException(description + " is required.");
+		}
+		if (!buffer.isDirect()) {
+			throw new IllegalArgumentException(description + " must be a direct ByteBuffer.");
+		}
+		if (minimumCapacity > 0L && buffer.capacity() < minimumCapacity) {
+			throw new IllegalArgumentException(description + " is smaller than the required native payload.");
+		}
+	}
+
 	private static native NativeMetalBridgeProbeResult probe0();
 
 	private static native NativeMetalBridgeProbeResult probeSurface0(long cocoaWindowHandle, long cocoaViewHandle);
@@ -265,6 +436,39 @@ public final class NativeMetalBridge implements MetalBridge {
 	private static native void configureSurface0(long nativeSurfaceHandle, int width, int height, boolean vsync);
 
 	private static native void acquireSurface0(long nativeSurfaceHandle);
+
+	private static native void blitSurfaceRgba80(long nativeSurfaceHandle, ByteBuffer rgbaPixels, int width, int height);
+
+	private static native long createTexture0(int width, int height, int depthOrLayers, int mipLevels, boolean renderAttachment, boolean shaderRead, boolean cubemapCompatible);
+
+	private static native void uploadTextureRgba80(long nativeTextureHandle, int mipLevel, int layer, ByteBuffer rgbaPixels, int width, int height);
+
+	private static native void releaseTexture0(long nativeTextureHandle);
+
+	private static native void drawGuiPass0(
+		long nativeTargetTextureHandle,
+		int pipelineKind,
+		ByteBuffer vertexData,
+		int vertexStride,
+		int baseVertex,
+		ByteBuffer indexData,
+		int indexTypeBytes,
+		int firstIndex,
+		int indexCount,
+		ByteBuffer projectionUniform,
+		ByteBuffer dynamicTransformsUniform,
+		long nativeSampler0TextureHandle,
+		boolean linearFiltering,
+		boolean repeatU,
+		boolean repeatV,
+		boolean scissorEnabled,
+		int scissorX,
+		int scissorY,
+		int scissorWidth,
+		int scissorHeight
+	);
+
+	private static native void blitSurfaceTexture0(long nativeSurfaceHandle, long nativeTextureHandle);
 
 	private static native void presentSurface0(long nativeSurfaceHandle);
 

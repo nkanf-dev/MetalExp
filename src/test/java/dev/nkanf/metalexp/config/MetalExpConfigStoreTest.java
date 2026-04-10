@@ -31,7 +31,7 @@ class MetalExpConfigStoreTest {
 			""");
 		MetalExpConfigStore store = new MetalExpConfigStore(path);
 
-		assertEquals(MetalExpConfig.defaults(), store.load());
+		assertEquals(new MetalExpConfig(BackendKind.METAL, FailureMode.FALLBACK, true), store.load());
 	}
 
 	@Test

@@ -54,6 +54,10 @@ final class MetalDeviceBackend implements GpuDeviceBackend {
 		return this.surfaceLease.descriptor();
 	}
 
+	MetalSurfaceLease surfaceLease() {
+		return this.surfaceLease;
+	}
+
 	@Override
 	public GpuSurfaceBackend createSurface(long window) {
 		if (this.closed) {
@@ -75,12 +79,12 @@ final class MetalDeviceBackend implements GpuDeviceBackend {
 
 	@Override
 	public GpuTexture createTexture(Supplier<String> supplier, int i, GpuFormat gpuFormat, int i1, int i2, int i3, int i4) {
-		return new MetalTexture(i, supplier.get(), gpuFormat, i1, i2, i3, i4);
+		return new MetalTexture(this.surfaceLease.metalBridge(), i, supplier.get(), gpuFormat, i1, i2, i3, i4);
 	}
 
 	@Override
 	public GpuTexture createTexture(String s, int i, GpuFormat gpuFormat, int i1, int i2, int i3, int i4) {
-		return new MetalTexture(i, s, gpuFormat, i1, i2, i3, i4);
+		return new MetalTexture(this.surfaceLease.metalBridge(), i, s, gpuFormat, i1, i2, i3, i4);
 	}
 
 	@Override
@@ -117,7 +121,7 @@ final class MetalDeviceBackend implements GpuDeviceBackend {
 
 	@Override
 	public CompiledRenderPipeline precompilePipeline(RenderPipeline renderPipeline, ShaderSource shaderSource) {
-		return () -> false;
+		return () -> true;
 	}
 
 	@Override

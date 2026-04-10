@@ -28,4 +28,3 @@ public enum FailureMode {
 		return FALLBACK;
 	}
 }
-

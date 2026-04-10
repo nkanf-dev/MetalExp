@@ -111,6 +111,13 @@ tasks.named("build") {
 	dependsOn(tasks.named("buildNativeMacosBridge"))
 }
 
+tasks.named("runClient") {
+	if (isMacOs) {
+		dependsOn(tasks.named("buildNativeMacosBridge"))
+		systemProperty("metalexp.nativeLibraryPath", nativeBridgeOutput.get().asFile.absolutePath)
+	}
+}
+
 publishing {
 	publications {
 		create("mavenJava", MavenPublication) {

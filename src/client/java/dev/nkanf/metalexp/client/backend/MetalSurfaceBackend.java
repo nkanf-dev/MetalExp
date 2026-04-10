@@ -5,6 +5,9 @@ import com.mojang.blaze3d.systems.GpuSurface;
 import com.mojang.blaze3d.systems.GpuSurfaceBackend;
 import com.mojang.blaze3d.systems.SurfaceException;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.blaze3d.GpuFormat;
+
+import java.nio.ByteBuffer;
 
 import java.util.Objects;
 
@@ -59,7 +62,40 @@ final class MetalSurfaceBackend implements GpuSurfaceBackend {
 
 	@Override
 	public void blitFromTexture(CommandEncoderBackend commandEncoderBackend, GpuTextureView gpuTextureView) {
-		throw new UnsupportedOperationException("Metal surface blit is not implemented yet.");
+		if (this.closed || !this.acquired || this.surfaceLease.isClosed()) {
+			throw new IllegalStateException("Metal surface backend must be acquired before blitting.");
+		}
+
+		if (commandEncoderBackend == null) {
+			throw new IllegalArgumentException("Metal surface blit requires a command encoder.");
+		}
+
+		if (gpuTextureView == null || gpuTextureView.isClosed()) {
+			throw new IllegalArgumentException("Metal surface blit requires a live color texture view.");
+		}
+
+		if (!(gpuTextureView.texture() instanceof MetalTexture metalTexture)) {
+			throw new IllegalArgumentException("Metal surface blit requires a Metal texture.");
+		}
+
+		if (metalTexture.getFormat() != GpuFormat.RGBA8_UNORM) {
+			throw new IllegalArgumentException("Metal surface blit currently only supports RGBA8_UNORM textures.");
+		}
+
+		if (metalTexture.hasNativeTextureHandle()) {
+			this.surfaceLease.blitTexture(metalTexture.nativeTextureHandle());
+			return;
+		}
+
+		int mipLevel = gpuTextureView.baseMipLevel();
+		ByteBuffer pixels = metalTexture.readRegion(
+			mipLevel,
+			0,
+			0,
+			gpuTextureView.getWidth(0),
+			gpuTextureView.getHeight(0)
+		);
+		this.surfaceLease.blitRgba8(pixels, gpuTextureView.getWidth(0), gpuTextureView.getHeight(0));
 	}
 
 	@Override

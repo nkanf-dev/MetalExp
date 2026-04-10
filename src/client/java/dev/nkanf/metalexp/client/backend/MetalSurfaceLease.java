@@ -2,6 +2,7 @@ package dev.nkanf.metalexp.client.backend;
 
 import dev.nkanf.metalexp.bridge.MetalBridge;
 
+import java.nio.ByteBuffer;
 import java.util.Objects;
 
 final class MetalSurfaceLease implements AutoCloseable {
@@ -18,6 +19,10 @@ final class MetalSurfaceLease implements AutoCloseable {
 		return this.descriptor;
 	}
 
+	MetalBridge metalBridge() {
+		return this.metalBridge;
+	}
+
 	long nativeSurfaceHandle() {
 		return this.descriptor.nativeSurfaceHandle();
 	}
@@ -30,6 +35,16 @@ final class MetalSurfaceLease implements AutoCloseable {
 	void acquire() {
 		this.ensureOpen();
 		this.metalBridge.acquireSurface(this.descriptor.nativeSurfaceHandle());
+	}
+
+	void blitRgba8(ByteBuffer rgbaPixels, int width, int height) {
+		this.ensureOpen();
+		this.metalBridge.blitSurfaceRgba8(this.descriptor.nativeSurfaceHandle(), rgbaPixels, width, height);
+	}
+
+	void blitTexture(long nativeTextureHandle) {
+		this.ensureOpen();
+		this.metalBridge.blitSurfaceTexture(this.descriptor.nativeSurfaceHandle(), nativeTextureHandle);
 	}
 
 	void present() {
