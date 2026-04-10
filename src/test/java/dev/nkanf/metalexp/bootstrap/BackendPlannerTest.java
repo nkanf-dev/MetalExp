@@ -43,4 +43,12 @@ class BackendPlannerTest {
 		assertEquals(List.of(BackendKind.VULKAN, BackendKind.OPENGL), plan.backendsToTry());
 		assertEquals(FailureMode.FALLBACK, plan.failureMode());
 	}
+
+	@Test
+	void defaultsUseStrictMetalOnMacOs() {
+		BackendPlan plan = BackendPlanner.plan(MetalExpConfig.defaults(), true);
+
+		assertEquals(List.of(BackendKind.METAL, BackendKind.VULKAN, BackendKind.OPENGL), plan.backendsToTry());
+		assertEquals(FailureMode.STRICT, plan.failureMode());
+	}
 }

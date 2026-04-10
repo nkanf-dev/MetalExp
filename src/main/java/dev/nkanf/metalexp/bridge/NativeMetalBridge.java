@@ -2,6 +2,7 @@ package dev.nkanf.metalexp.bridge;
 
 import java.util.Arrays;
 import java.util.List;
+import java.nio.ByteBuffer;
 
 public final class NativeMetalBridge implements MetalBridge {
 	private static final NativeMetalBridge INSTANCE = new NativeMetalBridge();
@@ -140,6 +141,19 @@ public final class NativeMetalBridge implements MetalBridge {
 	}
 
 	@Override
+	public void blitSurfaceRgba8(long nativeSurfaceHandle, ByteBuffer rgbaPixels, int width, int height) {
+		if (rgbaPixels == null) {
+			throw new IllegalArgumentException("Metal surface blit requires pixel data.");
+		}
+
+		runSurfaceOperation(
+			nativeSurfaceHandle,
+			() -> blitSurfaceRgba80(nativeSurfaceHandle, rgbaPixels, width, height),
+			"surface blit"
+		);
+	}
+
+	@Override
 	public void presentSurface(long nativeSurfaceHandle) {
 		runSurfaceOperation(nativeSurfaceHandle, () -> presentSurface0(nativeSurfaceHandle), "surface present");
 	}
@@ -265,6 +279,8 @@ public final class NativeMetalBridge implements MetalBridge {
 	private static native void configureSurface0(long nativeSurfaceHandle, int width, int height, boolean vsync);
 
 	private static native void acquireSurface0(long nativeSurfaceHandle);
+
+	private static native void blitSurfaceRgba80(long nativeSurfaceHandle, ByteBuffer rgbaPixels, int width, int height);
 
 	private static native void presentSurface0(long nativeSurfaceHandle);
 

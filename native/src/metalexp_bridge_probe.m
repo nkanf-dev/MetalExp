@@ -474,6 +474,96 @@ static void metalexp_present_surface(jlong native_surface_handle) {
 	surface->current_drawable = NULL;
 }
 
+static void metalexp_blit_surface_rgba8(jlong native_surface_handle, const void *pixels, jint width, jint height, jlong capacity) {
+	if (![NSThread isMainThread]) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface blit must run on the main AppKit thread."
+			userInfo:nil];
+	}
+
+	if (pixels == NULL) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface blit requires a direct pixel buffer."
+			userInfo:nil];
+	}
+
+	if (width <= 0 || height <= 0) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface blit requires positive texture dimensions."
+			userInfo:nil];
+	}
+
+	jlong required_bytes = (jlong)width * (jlong)height * 4L;
+	if (capacity < required_bytes) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface blit pixel buffer is smaller than the requested RGBA8 frame."
+			userInfo:nil];
+	}
+
+	metalexp_host_surface *surface = metalexp_require_surface(native_surface_handle, "blit");
+	if (surface->current_drawable == NULL) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface blit requires an acquired drawable."
+			userInfo:nil];
+	}
+
+	CAMetalLayer *layer = (__bridge CAMetalLayer *)surface->layer;
+	id<CAMetalDrawable> drawable = (__bridge id<CAMetalDrawable>)surface->current_drawable;
+	id<MTLDevice> device = layer.device;
+	if (device == nil) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface blit requires an active MTLDevice."
+			userInfo:nil];
+	}
+
+	id<MTLCommandQueue> command_queue = [device newCommandQueue];
+	if (command_queue == nil) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface blit could not create an MTLCommandQueue."
+			userInfo:nil];
+	}
+
+	id<MTLBuffer> staging_buffer = [device newBufferWithBytes:pixels length:(NSUInteger)required_bytes options:MTLResourceStorageModeShared];
+	if (staging_buffer == nil) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface blit could not allocate a staging MTLBuffer."
+			userInfo:nil];
+	}
+
+	id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+	if (command_buffer == nil) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface blit could not allocate an MTLCommandBuffer."
+			userInfo:nil];
+	}
+
+	id<MTLBlitCommandEncoder> blit_encoder = [command_buffer blitCommandEncoder];
+	if (blit_encoder == nil) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface blit could not allocate an MTLBlitCommandEncoder."
+			userInfo:nil];
+	}
+
+	[blit_encoder copyFromBuffer:staging_buffer
+		sourceOffset:0
+		sourceBytesPerRow:(NSUInteger)width * 4U
+		sourceBytesPerImage:(NSUInteger)width * (NSUInteger)height * 4U
+		sourceSize:MTLSizeMake(width, height, 1)
+		toTexture:drawable.texture
+		destinationSlice:0
+		destinationLevel:0
+		destinationOrigin:MTLOriginMake(0, 0, 0)];
+	[blit_encoder endEncoding];
+	[command_buffer commit];
+	[command_buffer waitUntilCompleted];
+
+	if (command_buffer.error != nil) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:command_buffer.error.localizedDescription == nil ? @"Metal surface blit command buffer failed." : command_buffer.error.localizedDescription
+			userInfo:nil];
+	}
+}
+
 JNIEXPORT jobject JNICALL Java_dev_nkanf_metalexp_bridge_NativeMetalBridge_probe0(JNIEnv *env, jclass clazz) {
 	(void) clazz;
 
@@ -579,6 +669,16 @@ JNIEXPORT void JNICALL Java_dev_nkanf_metalexp_bridge_NativeMetalBridge_acquireS
 
 	@autoreleasepool {
 		metalexp_acquire_surface(native_surface_handle);
+	}
+}
+
+JNIEXPORT void JNICALL Java_dev_nkanf_metalexp_bridge_NativeMetalBridge_blitSurfaceRgba80(JNIEnv *env, jclass clazz, jlong native_surface_handle, jobject rgba_pixels, jint width, jint height) {
+	(void) clazz;
+
+	@autoreleasepool {
+		void *pixels = (*env)->GetDirectBufferAddress(env, rgba_pixels);
+		jlong capacity = rgba_pixels == NULL ? 0L : (*env)->GetDirectBufferCapacity(env, rgba_pixels);
+		metalexp_blit_surface_rgba8(native_surface_handle, pixels, width, height, capacity);
 	}
 }
 

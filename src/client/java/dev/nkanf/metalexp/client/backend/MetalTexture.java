@@ -77,6 +77,21 @@ final class MetalTexture extends GpuTexture {
 		destination.writeRegion(readRegion(mipLevel, srcX, srcY, width, height), getFormat().pixelSize(), width, mipLevel, dstX, dstY, width, height, 0, 0);
 	}
 
+	void fillRegion(int mipLevel, int dstX, int dstY, int width, int height, int packedValue) {
+		ByteBuffer destination = this.mipStorage[mipLevel].duplicate().order(ByteOrder.nativeOrder());
+		int bytesPerPixel = getFormat().pixelSize();
+		int mipWidth = getWidth(mipLevel);
+
+		for (int row = 0; row < height; row++) {
+			for (int column = 0; column < width; column++) {
+				int destinationPixelOffset = ((dstY + row) * mipWidth + (dstX + column)) * bytesPerPixel;
+				for (int byteIndex = 0; byteIndex < bytesPerPixel; byteIndex++) {
+					destination.put(destinationPixelOffset + byteIndex, (byte) (packedValue >>> (byteIndex * 8)));
+				}
+			}
+		}
+	}
+
 	ByteBuffer snapshotStorage(int mipLevel) {
 		return this.mipStorage[mipLevel].duplicate().order(ByteOrder.nativeOrder());
 	}

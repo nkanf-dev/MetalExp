@@ -163,9 +163,10 @@ class MetalDeviceBackendTest {
 
 	@Test
 	void supportsNoOpRenderPassAndSurfaceBlitLifecycle() throws Exception {
+		SurfaceTrackingBridge bridge = new SurfaceTrackingBridge();
 		GpuDevice device = new GpuDevice(
 			new MetalDeviceBackend(
-				new SurfaceTrackingBridge(),
+				bridge,
 				new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
 			)
 		);
@@ -198,6 +199,9 @@ class MetalDeviceBackendTest {
 			surface.blitFromTexture(commandEncoder, colorTextureView);
 			commandEncoder.submit();
 			surface.present();
+			assertTrue(bridge.blitCalled.get());
+			assertEquals(32, bridge.blitWidth);
+			assertEquals(32, bridge.blitHeight);
 
 			colorTextureView.close();
 			colorTextureB.close();
@@ -320,10 +324,13 @@ class MetalDeviceBackendTest {
 		private final AtomicLong configuredHandle = new AtomicLong(-1L);
 		private final AtomicLong releasedHandle = new AtomicLong(-1L);
 		private final AtomicBoolean acquired = new AtomicBoolean();
+		private final AtomicBoolean blitCalled = new AtomicBoolean();
 		private final AtomicBoolean presented = new AtomicBoolean();
 		private int configuredWidth;
 		private int configuredHeight;
 		private boolean configuredVsync;
+		private int blitWidth;
+		private int blitHeight;
 		private RuntimeException acquireFailure;
 
 		@Override
@@ -356,6 +363,13 @@ class MetalDeviceBackendTest {
 			}
 
 			this.acquired.set(true);
+		}
+
+		@Override
+		public void blitSurfaceRgba8(long nativeSurfaceHandle, ByteBuffer rgbaPixels, int width, int height) {
+			this.blitCalled.set(true);
+			this.blitWidth = width;
+			this.blitHeight = height;
 		}
 
 		@Override

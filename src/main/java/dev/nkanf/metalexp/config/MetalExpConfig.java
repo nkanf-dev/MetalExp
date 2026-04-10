@@ -6,7 +6,6 @@ public record MetalExpConfig(
 	boolean diagnosticsEnabled
 ) {
 	public static MetalExpConfig defaults() {
-		return new MetalExpConfig(BackendKind.METAL, FailureMode.FALLBACK, true);
+		return new MetalExpConfig(BackendKind.METAL, FailureMode.STRICT, true);
 	}
 }
-

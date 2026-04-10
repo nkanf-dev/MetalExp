@@ -16,7 +16,7 @@ public enum FailureMode {
 
 	public static FailureMode fromId(String value) {
 		if (value == null) {
-			return FALLBACK;
+			return STRICT;
 		}
 
 		for (FailureMode mode : values()) {
@@ -25,7 +25,6 @@ public enum FailureMode {
 			}
 		}
 
-		return FALLBACK;
+		return STRICT;
 	}
 }
-

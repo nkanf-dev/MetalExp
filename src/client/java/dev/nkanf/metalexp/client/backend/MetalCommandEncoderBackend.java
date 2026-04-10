@@ -39,14 +39,17 @@ final class MetalCommandEncoderBackend implements CommandEncoderBackend {
 
 	@Override
 	public void clearColorTexture(GpuTexture gpuTexture, int i) {
+		((MetalTexture) gpuTexture).fillRegion(0, 0, 0, gpuTexture.getWidth(0), gpuTexture.getHeight(0), i);
 	}
 
 	@Override
 	public void clearColorAndDepthTextures(GpuTexture gpuTexture, int i, GpuTexture gpuTexture1, double v) {
+		clearColorTexture(gpuTexture, i);
 	}
 
 	@Override
 	public void clearColorAndDepthTextures(GpuTexture gpuTexture, int i, GpuTexture gpuTexture1, double v, int i1, int i2, int i3, int i4) {
+		((MetalTexture) gpuTexture).fillRegion(0, i1, i2, i3, i4, i);
 	}
 
 	@Override
