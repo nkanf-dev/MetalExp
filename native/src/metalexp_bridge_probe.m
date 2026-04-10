@@ -255,7 +255,6 @@ static CAMetalLayer *metalexp_create_layer(NSWindow *window, NSView *view, id<MT
 	}
 
 	layer.device = device;
-	layer.pixelFormat = MTLPixelFormatRGBA8Unorm;
 	CGFloat contents_scale = window.screen != nil ? window.screen.backingScaleFactor : 1.0;
 	if (contents_scale <= 0.0) {
 		contents_scale = 1.0;
