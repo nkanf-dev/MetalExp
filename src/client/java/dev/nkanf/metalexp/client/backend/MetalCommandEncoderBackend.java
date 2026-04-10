@@ -17,20 +17,18 @@ import java.util.OptionalInt;
 import java.util.function.Supplier;
 
 final class MetalCommandEncoderBackend implements CommandEncoderBackend {
-	private static final MetalRenderPassBackend NO_OP_RENDER_PASS = new MetalRenderPassBackend();
-
 	@Override
 	public void submit() {
 	}
 
 	@Override
 	public RenderPassBackend createRenderPass(Supplier<String> supplier, GpuTextureView gpuTextureView, OptionalInt optionalInt) {
-		return NO_OP_RENDER_PASS;
+		return new MetalRenderPassBackend(gpuTextureView);
 	}
 
 	@Override
 	public RenderPassBackend createRenderPass(Supplier<String> supplier, GpuTextureView gpuTextureView, OptionalInt optionalInt, GpuTextureView gpuTextureView1, OptionalDouble optionalDouble) {
-		return NO_OP_RENDER_PASS;
+		return new MetalRenderPassBackend(gpuTextureView);
 	}
 
 	@Override

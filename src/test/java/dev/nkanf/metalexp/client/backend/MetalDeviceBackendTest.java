@@ -1,9 +1,10 @@
 package dev.nkanf.metalexp.client.backend;
 
-import com.mojang.blaze3d.systems.GpuSurface;
 import com.mojang.blaze3d.pipeline.MainTarget;
+import com.mojang.blaze3d.systems.GpuSurface;
 import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.GpuDevice;
+import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.SurfaceException;
@@ -14,6 +15,7 @@ import dev.nkanf.metalexp.bridge.MetalBridge;
 import dev.nkanf.metalexp.bridge.MetalBridgeProbe;
 import dev.nkanf.metalexp.bridge.MetalBridgeProbeStatus;
 import dev.nkanf.metalexp.bridge.MetalHostSurfaceBootstrap;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import org.junit.jupiter.api.Test;
 
@@ -292,6 +294,80 @@ class MetalDeviceBackendTest {
 		}
 	}
 
+	@Test
+	void rasterizesGuiColoredQuadIntoTargetTexture() {
+		MetalDeviceBackend backend = new MetalDeviceBackend(
+			new SurfaceTrackingBridge(),
+			new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+		);
+		MetalTexture colorTexture = (MetalTexture) backend.createTexture("gui-color-target", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 8, 8, 1, 1);
+		MetalTextureView colorView = (MetalTextureView) backend.createTextureView(colorTexture);
+		MetalBuffer vertexBuffer = (MetalBuffer) backend.createBuffer(() -> "gui-color-vertices", GpuBuffer.USAGE_VERTEX, coloredGuiQuadVertices());
+		MetalBuffer indexBuffer = (MetalBuffer) backend.createBuffer(() -> "gui-color-indices", GpuBuffer.USAGE_INDEX, quadIndices());
+		RenderPass renderPass = new RenderPass(
+			new MetalRenderPassBackend(colorView),
+			backend,
+			() -> {
+			}
+		);
+
+		try {
+			renderPass.setPipeline(RenderPipelines.GUI);
+			renderPass.setVertexBuffer(0, vertexBuffer);
+			renderPass.setIndexBuffer(indexBuffer, com.mojang.blaze3d.vertex.VertexFormat.IndexType.SHORT);
+			renderPass.drawIndexed(0, 0, 6, 1);
+		} finally {
+			renderPass.close();
+		}
+
+		assertEquals(0xFF0000FF, rgbaAt(colorTexture.snapshotStorage(0), 8, 4, 4));
+	}
+
+	@Test
+	void rasterizesGuiTexturedQuadIntoTargetTexture() {
+		MetalDeviceBackend backend = new MetalDeviceBackend(
+			new SurfaceTrackingBridge(),
+			new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+		);
+		MetalTexture sourceTexture = (MetalTexture) backend.createTexture("gui-source", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 2, 2, 1, 1);
+		sourceTexture.writeRegion(texturedSourcePixels(), 4, 2, 0, 0, 0, 2, 2, 0, 0);
+
+		MetalTexture colorTexture = (MetalTexture) backend.createTexture("gui-textured-target", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 8, 8, 1, 1);
+		MetalTextureView colorView = (MetalTextureView) backend.createTextureView(colorTexture);
+		MetalTextureView sourceView = (MetalTextureView) backend.createTextureView(sourceTexture);
+		MetalSampler sampler = (MetalSampler) backend.createSampler(
+			AddressMode.CLAMP_TO_EDGE,
+			AddressMode.CLAMP_TO_EDGE,
+			FilterMode.NEAREST,
+			FilterMode.NEAREST,
+			1,
+			java.util.OptionalDouble.empty()
+		);
+		MetalBuffer vertexBuffer = (MetalBuffer) backend.createBuffer(() -> "gui-textured-vertices", GpuBuffer.USAGE_VERTEX, texturedGuiQuadVertices());
+		MetalBuffer indexBuffer = (MetalBuffer) backend.createBuffer(() -> "gui-textured-indices", GpuBuffer.USAGE_INDEX, quadIndices());
+		RenderPass renderPass = new RenderPass(
+			new MetalRenderPassBackend(colorView),
+			backend,
+			() -> {
+			}
+		);
+
+		try {
+			renderPass.setPipeline(RenderPipelines.GUI_TEXTURED);
+			renderPass.setVertexBuffer(0, vertexBuffer);
+			renderPass.bindTexture("Sampler0", sourceView, sampler);
+			renderPass.setIndexBuffer(indexBuffer, com.mojang.blaze3d.vertex.VertexFormat.IndexType.SHORT);
+			renderPass.drawIndexed(0, 0, 6, 1);
+		} finally {
+			renderPass.close();
+		}
+
+		assertEquals(0xFF0000FF, rgbaAt(colorTexture.snapshotStorage(0), 8, 1, 1));
+		assertEquals(0xFF00FF00, rgbaAt(colorTexture.snapshotStorage(0), 8, 6, 1));
+		assertEquals(0xFFFF0000, rgbaAt(colorTexture.snapshotStorage(0), 8, 1, 6));
+		assertEquals(0xFFFFFFFF, rgbaAt(colorTexture.snapshotStorage(0), 8, 6, 6));
+	}
+
 	private static void resetRenderSystemState() throws Exception {
 		setRenderThread(null);
 		setRenderSystemField("DEVICE", null);
@@ -318,6 +394,79 @@ class MetalDeviceBackendTest {
 		}
 
 		return true;
+	}
+
+	private static ByteBuffer coloredGuiQuadVertices() {
+		ByteBuffer buffer = ByteBuffer.allocateDirect(4 * 16).order(ByteOrder.nativeOrder());
+		putColoredVertex(buffer, 0.0F, 0.0F, 255, 0, 0, 255);
+		putColoredVertex(buffer, 8.0F, 0.0F, 255, 0, 0, 255);
+		putColoredVertex(buffer, 8.0F, 8.0F, 255, 0, 0, 255);
+		putColoredVertex(buffer, 0.0F, 8.0F, 255, 0, 0, 255);
+		buffer.flip();
+		return buffer;
+	}
+
+	private static ByteBuffer texturedGuiQuadVertices() {
+		ByteBuffer buffer = ByteBuffer.allocateDirect(4 * 24).order(ByteOrder.nativeOrder());
+		putTexturedVertex(buffer, 0.0F, 0.0F, 0.0F, 0.0F, 255, 255, 255, 255);
+		putTexturedVertex(buffer, 8.0F, 0.0F, 1.0F, 0.0F, 255, 255, 255, 255);
+		putTexturedVertex(buffer, 8.0F, 8.0F, 1.0F, 1.0F, 255, 255, 255, 255);
+		putTexturedVertex(buffer, 0.0F, 8.0F, 0.0F, 1.0F, 255, 255, 255, 255);
+		buffer.flip();
+		return buffer;
+	}
+
+	private static ByteBuffer quadIndices() {
+		ByteBuffer buffer = ByteBuffer.allocateDirect(6 * Short.BYTES).order(ByteOrder.nativeOrder());
+		buffer.putShort((short) 0);
+		buffer.putShort((short) 1);
+		buffer.putShort((short) 2);
+		buffer.putShort((short) 0);
+		buffer.putShort((short) 2);
+		buffer.putShort((short) 3);
+		buffer.flip();
+		return buffer;
+	}
+
+	private static ByteBuffer texturedSourcePixels() {
+		ByteBuffer buffer = ByteBuffer.allocateDirect(2 * 2 * 4).order(ByteOrder.nativeOrder());
+		putRgba(buffer, 255, 0, 0, 255);
+		putRgba(buffer, 0, 255, 0, 255);
+		putRgba(buffer, 0, 0, 255, 255);
+		putRgba(buffer, 255, 255, 255, 255);
+		buffer.flip();
+		return buffer;
+	}
+
+	private static void putColoredVertex(ByteBuffer buffer, float x, float y, int red, int green, int blue, int alpha) {
+		buffer.putFloat(x);
+		buffer.putFloat(y);
+		buffer.putFloat(0.0F);
+		putRgba(buffer, red, green, blue, alpha);
+	}
+
+	private static void putTexturedVertex(ByteBuffer buffer, float x, float y, float u, float v, int red, int green, int blue, int alpha) {
+		buffer.putFloat(x);
+		buffer.putFloat(y);
+		buffer.putFloat(0.0F);
+		buffer.putFloat(u);
+		buffer.putFloat(v);
+		putRgba(buffer, red, green, blue, alpha);
+	}
+
+	private static void putRgba(ByteBuffer buffer, int red, int green, int blue, int alpha) {
+		buffer.put((byte) red);
+		buffer.put((byte) green);
+		buffer.put((byte) blue);
+		buffer.put((byte) alpha);
+	}
+
+	private static int rgbaAt(ByteBuffer buffer, int width, int x, int y) {
+		int offset = ((y * width) + x) * 4;
+		return Byte.toUnsignedInt(buffer.get(offset))
+			| (Byte.toUnsignedInt(buffer.get(offset + 1)) << 8)
+			| (Byte.toUnsignedInt(buffer.get(offset + 2)) << 16)
+			| (Byte.toUnsignedInt(buffer.get(offset + 3)) << 24);
 	}
 
 	private static final class SurfaceTrackingBridge implements MetalBridge {
