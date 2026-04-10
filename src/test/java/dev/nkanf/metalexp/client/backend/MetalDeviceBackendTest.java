@@ -294,6 +294,80 @@ class MetalDeviceBackendTest {
 	}
 
 	@Test
+	void writeRegionExpandsUndersizedSourceRowLengthForOffsetSubregions() {
+		MetalDeviceBackend backend = new MetalDeviceBackend(
+			new SurfaceTrackingBridge(),
+			new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+		);
+		MetalTexture texture = (MetalTexture) backend.createTexture("subregion-upload", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 2, 2, 1, 1);
+		ByteBuffer atlasPixels = ByteBuffer.allocateDirect(4 * 2 * 4).order(ByteOrder.nativeOrder());
+		putRgba(atlasPixels, 1, 2, 3, 255);
+		putRgba(atlasPixels, 4, 5, 6, 255);
+		putRgba(atlasPixels, 10, 20, 30, 255);
+		putRgba(atlasPixels, 40, 50, 60, 255);
+		putRgba(atlasPixels, 7, 8, 9, 255);
+		putRgba(atlasPixels, 11, 12, 13, 255);
+		putRgba(atlasPixels, 70, 80, 90, 255);
+		putRgba(atlasPixels, 100, 110, 120, 255);
+		atlasPixels.flip();
+
+		texture.writeRegion(atlasPixels, 4, 2, 0, 0, 0, 2, 2, 2, 0);
+
+		ByteBuffer uploaded = texture.readRegion(0, 0, 0, 2, 2);
+		assertPixelRgba(uploaded, 2, 0, 0, 10, 20, 30, 255);
+		assertPixelRgba(uploaded, 2, 1, 0, 40, 50, 60, 255);
+		assertPixelRgba(uploaded, 2, 0, 1, 70, 80, 90, 255);
+		assertPixelRgba(uploaded, 2, 1, 1, 100, 110, 120, 255);
+	}
+
+	@Test
+	void animateSpriteBlitDrawCopiesSpriteIntoAtlasTarget() {
+		MetalDeviceBackend backend = new MetalDeviceBackend(
+			new SurfaceTrackingBridge(),
+			new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+		);
+		MetalTexture atlasTexture = (MetalTexture) backend.createTexture("atlas-target", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 8, 8, 1, 1);
+		MetalTextureView atlasView = (MetalTextureView) backend.createTextureView(atlasTexture);
+		MetalTexture spriteTexture = (MetalTexture) backend.createTexture("sprite-source", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 2, 2, 1, 1);
+		spriteTexture.writeRegion(texturedSourcePixels(), 4, 2, 0, 0, 0, 2, 2, 0, 0);
+		MetalTextureView spriteView = (MetalTextureView) backend.createTextureView(spriteTexture);
+		MetalSampler sampler = (MetalSampler) backend.createSampler(
+			AddressMode.CLAMP_TO_EDGE,
+			AddressMode.CLAMP_TO_EDGE,
+			FilterMode.NEAREST,
+			FilterMode.NEAREST,
+			1,
+			java.util.OptionalDouble.empty()
+		);
+		MetalBuffer spriteAnimationInfo = (MetalBuffer) backend.createBuffer(
+			() -> "sprite-animation-info",
+			GpuBuffer.USAGE_UNIFORM,
+			spriteAnimationInfoBytes(2.0F, 3.0F, 2.0F, 2.0F, 0.0F, 0.0F, 0)
+		);
+		RenderPass renderPass = new RenderPass(
+			new MetalRenderPassBackend(atlasView),
+			backend,
+			() -> {
+			}
+		);
+
+		try {
+			renderPass.setPipeline(RenderPipelines.ANIMATE_SPRITE_BLIT);
+			renderPass.bindTexture("Sprite", spriteView, sampler);
+			renderPass.setUniform("SpriteAnimationInfo", spriteAnimationInfo.slice());
+			renderPass.draw(0, 6);
+		} finally {
+			renderPass.close();
+		}
+
+		ByteBuffer atlasPixels = atlasTexture.readRegion(0, 2, 3, 2, 2);
+		assertPixelRgba(atlasPixels, 2, 0, 0, 255, 0, 0, 255);
+		assertPixelRgba(atlasPixels, 2, 1, 0, 0, 255, 0, 255);
+		assertPixelRgba(atlasPixels, 2, 0, 1, 0, 0, 255, 255);
+		assertPixelRgba(atlasPixels, 2, 1, 1, 255, 255, 255, 255);
+	}
+
+	@Test
 	void delegatesGuiColoredDrawToNativeBridge() {
 		SurfaceTrackingBridge bridge = new SurfaceTrackingBridge();
 		MetalDeviceBackend backend = new MetalDeviceBackend(
@@ -380,6 +454,149 @@ class MetalDeviceBackendTest {
 		assertEquals(colorTexture.nativeTextureHandle(), bridge.lastDrawTargetTextureHandle);
 		assertEquals(sourceTexture.nativeTextureHandle(), bridge.lastSamplerTextureHandle);
 		assertFalse(bridge.lastLinearFiltering);
+	}
+
+	@Test
+	void delegatesGuiTexturedNonIndexedDrawToNativeBridge() {
+		SurfaceTrackingBridge bridge = new SurfaceTrackingBridge();
+		MetalDeviceBackend backend = new MetalDeviceBackend(
+			bridge,
+			new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+		);
+		MetalTexture sourceTexture = (MetalTexture) backend.createTexture("gui-source", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 2, 2, 1, 1);
+		sourceTexture.writeRegion(texturedSourcePixels(), 4, 2, 0, 0, 0, 2, 2, 0, 0);
+		MetalTexture colorTexture = (MetalTexture) backend.createTexture("gui-textured-target", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 8, 8, 1, 1);
+		MetalTextureView colorView = (MetalTextureView) backend.createTextureView(colorTexture);
+		MetalTextureView sourceView = (MetalTextureView) backend.createTextureView(sourceTexture);
+		MetalSampler sampler = (MetalSampler) backend.createSampler(
+			AddressMode.CLAMP_TO_EDGE,
+			AddressMode.CLAMP_TO_EDGE,
+			FilterMode.NEAREST,
+			FilterMode.NEAREST,
+			1,
+			java.util.OptionalDouble.empty()
+		);
+		MetalBuffer vertexBuffer = (MetalBuffer) backend.createBuffer(() -> "gui-textured-vertices", GpuBuffer.USAGE_VERTEX, texturedGuiQuadVertices());
+		MetalBuffer projectionBuffer = (MetalBuffer) backend.createBuffer(() -> "projection", GpuBuffer.USAGE_UNIFORM, projectionUniformBytes());
+		MetalBuffer dynamicBuffer = (MetalBuffer) backend.createBuffer(() -> "dynamic", GpuBuffer.USAGE_UNIFORM, dynamicTransformsBytes());
+		RenderPass renderPass = new RenderPass(
+			new MetalRenderPassBackend(colorView),
+			backend,
+			() -> {
+			}
+		);
+
+		try {
+			renderPass.setPipeline(RenderPipelines.GUI_TEXTURED);
+			renderPass.setUniform("Projection", projectionBuffer.slice());
+			renderPass.setUniform("DynamicTransforms", dynamicBuffer.slice());
+			renderPass.setVertexBuffer(0, vertexBuffer);
+			renderPass.bindTexture("Sampler0", sourceView, sampler);
+			renderPass.draw(0, 6);
+		} finally {
+			renderPass.close();
+		}
+
+		assertTrue(bridge.guiDrawCalled.get());
+		assertEquals(2, bridge.lastPipelineKind);
+		assertEquals(colorTexture.nativeTextureHandle(), bridge.lastDrawTargetTextureHandle);
+		assertEquals(sourceTexture.nativeTextureHandle(), bridge.lastSamplerTextureHandle);
+	}
+
+	@Test
+	void delegatesGuiOpaqueTexturedBackgroundDrawToNativeBridge() {
+		SurfaceTrackingBridge bridge = new SurfaceTrackingBridge();
+		MetalDeviceBackend backend = new MetalDeviceBackend(
+			bridge,
+			new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+		);
+		MetalTexture sourceTexture = (MetalTexture) backend.createTexture("gui-source", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 2, 2, 1, 1);
+		sourceTexture.writeRegion(texturedSourcePixels(), 4, 2, 0, 0, 0, 2, 2, 0, 0);
+		MetalTexture colorTexture = (MetalTexture) backend.createTexture("gui-textured-target", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 8, 8, 1, 1);
+		MetalTextureView colorView = (MetalTextureView) backend.createTextureView(colorTexture);
+		MetalTextureView sourceView = (MetalTextureView) backend.createTextureView(sourceTexture);
+		MetalSampler sampler = (MetalSampler) backend.createSampler(
+			AddressMode.CLAMP_TO_EDGE,
+			AddressMode.CLAMP_TO_EDGE,
+			FilterMode.NEAREST,
+			FilterMode.NEAREST,
+			1,
+			java.util.OptionalDouble.empty()
+		);
+		MetalBuffer vertexBuffer = (MetalBuffer) backend.createBuffer(() -> "gui-textured-vertices", GpuBuffer.USAGE_VERTEX, texturedGuiQuadVertices());
+		MetalBuffer indexBuffer = (MetalBuffer) backend.createBuffer(() -> "gui-textured-indices", GpuBuffer.USAGE_INDEX, quadIndices());
+		MetalBuffer projectionBuffer = (MetalBuffer) backend.createBuffer(() -> "projection", GpuBuffer.USAGE_UNIFORM, projectionUniformBytes());
+		MetalBuffer dynamicBuffer = (MetalBuffer) backend.createBuffer(() -> "dynamic", GpuBuffer.USAGE_UNIFORM, dynamicTransformsBytes());
+		RenderPass renderPass = new RenderPass(
+			new MetalRenderPassBackend(colorView),
+			backend,
+			() -> {
+			}
+		);
+
+		try {
+			renderPass.setPipeline(RenderPipelines.GUI_OPAQUE_TEXTURED_BACKGROUND);
+			renderPass.setUniform("Projection", projectionBuffer.slice());
+			renderPass.setUniform("DynamicTransforms", dynamicBuffer.slice());
+			renderPass.setVertexBuffer(0, vertexBuffer);
+			renderPass.bindTexture("Sampler0", sourceView, sampler);
+			renderPass.setIndexBuffer(indexBuffer, com.mojang.blaze3d.vertex.VertexFormat.IndexType.SHORT);
+			renderPass.drawIndexed(0, 0, 6, 1);
+		} finally {
+			renderPass.close();
+		}
+
+		assertTrue(bridge.guiDrawCalled.get());
+		assertEquals(4, bridge.lastPipelineKind);
+		assertEquals(sourceTexture.nativeTextureHandle(), bridge.lastSamplerTextureHandle);
+	}
+
+	@Test
+	void delegatesGuiPremultipliedTexturedDrawToNativeBridge() {
+		SurfaceTrackingBridge bridge = new SurfaceTrackingBridge();
+		MetalDeviceBackend backend = new MetalDeviceBackend(
+			bridge,
+			new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+		);
+		MetalTexture sourceTexture = (MetalTexture) backend.createTexture("gui-source", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 2, 2, 1, 1);
+		sourceTexture.writeRegion(texturedSourcePixels(), 4, 2, 0, 0, 0, 2, 2, 0, 0);
+		MetalTexture colorTexture = (MetalTexture) backend.createTexture("gui-textured-target", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 8, 8, 1, 1);
+		MetalTextureView colorView = (MetalTextureView) backend.createTextureView(colorTexture);
+		MetalTextureView sourceView = (MetalTextureView) backend.createTextureView(sourceTexture);
+		MetalSampler sampler = (MetalSampler) backend.createSampler(
+			AddressMode.CLAMP_TO_EDGE,
+			AddressMode.CLAMP_TO_EDGE,
+			FilterMode.NEAREST,
+			FilterMode.NEAREST,
+			1,
+			java.util.OptionalDouble.empty()
+		);
+		MetalBuffer vertexBuffer = (MetalBuffer) backend.createBuffer(() -> "gui-textured-vertices", GpuBuffer.USAGE_VERTEX, texturedGuiQuadVertices());
+		MetalBuffer indexBuffer = (MetalBuffer) backend.createBuffer(() -> "gui-textured-indices", GpuBuffer.USAGE_INDEX, quadIndices());
+		MetalBuffer projectionBuffer = (MetalBuffer) backend.createBuffer(() -> "projection", GpuBuffer.USAGE_UNIFORM, projectionUniformBytes());
+		MetalBuffer dynamicBuffer = (MetalBuffer) backend.createBuffer(() -> "dynamic", GpuBuffer.USAGE_UNIFORM, dynamicTransformsBytes());
+		RenderPass renderPass = new RenderPass(
+			new MetalRenderPassBackend(colorView),
+			backend,
+			() -> {
+			}
+		);
+
+		try {
+			renderPass.setPipeline(RenderPipelines.GUI_TEXTURED_PREMULTIPLIED_ALPHA);
+			renderPass.setUniform("Projection", projectionBuffer.slice());
+			renderPass.setUniform("DynamicTransforms", dynamicBuffer.slice());
+			renderPass.setVertexBuffer(0, vertexBuffer);
+			renderPass.bindTexture("Sampler0", sourceView, sampler);
+			renderPass.setIndexBuffer(indexBuffer, com.mojang.blaze3d.vertex.VertexFormat.IndexType.SHORT);
+			renderPass.drawIndexed(0, 0, 6, 1);
+		} finally {
+			renderPass.close();
+		}
+
+		assertTrue(bridge.guiDrawCalled.get());
+		assertEquals(5, bridge.lastPipelineKind);
+		assertEquals(sourceTexture.nativeTextureHandle(), bridge.lastSamplerTextureHandle);
 	}
 
 	@Test
@@ -660,6 +877,24 @@ class MetalDeviceBackendTest {
 		return buffer;
 	}
 
+	private static ByteBuffer spriteAnimationInfoBytes(float x, float y, float width, float height, float uPadding, float vPadding, int mipLevel) {
+		ByteBuffer buffer = ByteBuffer.allocateDirect(144).order(ByteOrder.nativeOrder());
+		buffer.putFloat(0, 1.0F);
+		buffer.putFloat(20, 1.0F);
+		buffer.putFloat(40, 1.0F);
+		buffer.putFloat(60, 1.0F);
+		buffer.putFloat(64, width);
+		buffer.putFloat(64 + 20, height);
+		buffer.putFloat(64 + 40, 1.0F);
+		buffer.putFloat(64 + 48, x);
+		buffer.putFloat(64 + 52, y);
+		buffer.putFloat(64 + 60, 1.0F);
+		buffer.putFloat(128, uPadding);
+		buffer.putFloat(132, vPadding);
+		buffer.putInt(136, mipLevel);
+		return buffer;
+	}
+
 	private static void putColoredVertex(ByteBuffer buffer, float x, float y, int red, int green, int blue, int alpha) {
 		buffer.putFloat(x);
 		buffer.putFloat(y);
@@ -687,6 +922,14 @@ class MetalDeviceBackendTest {
 		buffer.put((byte) green);
 		buffer.put((byte) blue);
 		buffer.put((byte) alpha);
+	}
+
+	private static void assertPixelRgba(ByteBuffer buffer, int width, int x, int y, int red, int green, int blue, int alpha) {
+		int offset = (y * width + x) * 4;
+		assertEquals(red, Byte.toUnsignedInt(buffer.get(offset)));
+		assertEquals(green, Byte.toUnsignedInt(buffer.get(offset + 1)));
+		assertEquals(blue, Byte.toUnsignedInt(buffer.get(offset + 2)));
+		assertEquals(alpha, Byte.toUnsignedInt(buffer.get(offset + 3)));
 	}
 
 	private static final class SurfaceTrackingBridge implements MetalBridge {

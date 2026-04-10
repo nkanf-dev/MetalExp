@@ -26,6 +26,12 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 	private static final int PIPELINE_KIND_GUI_COLOR = 1;
 	private static final int PIPELINE_KIND_GUI_TEXTURED = 2;
 	private static final int PIPELINE_KIND_PANORAMA = 3;
+	private static final int PIPELINE_KIND_GUI_TEXTURED_OPAQUE_BACKGROUND = 4;
+	private static final int PIPELINE_KIND_GUI_TEXTURED_PREMULTIPLIED_ALPHA = 5;
+	private static final String ANIMATE_SPRITE_BLIT_LOCATION = "minecraft:pipeline/animate_sprite_blit";
+	private static final String PANORAMA_LOCATION = "minecraft:pipeline/panorama";
+	private static final String GUI_TEXTURED_OPAQUE_BACKGROUND_LOCATION = "minecraft:pipeline/gui_opaque_textured_background";
+	private static final String GUI_TEXTURED_PREMULTIPLIED_ALPHA_LOCATION = "minecraft:pipeline/gui_textured_premultiplied_alpha";
 	private static final float EPSILON = 0.0001F;
 
 	private final MetalTexture colorTarget;
@@ -150,7 +156,7 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 		int pipelineKind = resolvePipelineKind();
 		BoundTexture sampler0 = this.boundTextures.get("Sampler0");
 		long sampler0TextureHandle = sampler0 == null ? 0L : sampler0.texture.nativeTextureHandle();
-		if (pipelineKind == PIPELINE_KIND_GUI_TEXTURED && sampler0TextureHandle == 0L) {
+		if (requiresSampler0Texture(pipelineKind) && sampler0TextureHandle == 0L) {
 			throw new IllegalStateException("Textured Metal GUI draw requires a native Sampler0 texture.");
 		}
 		if (pipelineKind == PIPELINE_KIND_PANORAMA && sampler0TextureHandle == 0L) {
@@ -199,7 +205,124 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 	}
 
 	@Override
-	public void draw(int vertexCount, int instanceCount) {
+	public void draw(int firstVertex, int vertexCount) {
+		if (this.pipeline == null) {
+			return;
+		}
+
+		String pipelineLocation = this.pipeline.getLocation().toString();
+		if (ANIMATE_SPRITE_BLIT_LOCATION.equals(pipelineLocation)) {
+			drawAnimateSpriteBlit();
+			return;
+		}
+
+		if (vertexCount <= 0) {
+			return;
+		}
+
+		if (this.vertexBuffer == null || this.vertexBuffer.size() == 0L) {
+			return;
+		}
+
+		GpuBufferSlice projectionUniform = requireUniform("Projection");
+		GpuBufferSlice dynamicUniform = requireUniform("DynamicTransforms");
+		ByteBuffer projectionData = sliceUniformBuffer(projectionUniform);
+		ByteBuffer dynamicData = sliceUniformBuffer(dynamicUniform);
+		int pipelineKind = resolvePipelineKind();
+		BoundTexture sampler0 = this.boundTextures.get("Sampler0");
+		long sampler0TextureHandle = sampler0 == null ? 0L : sampler0.texture.nativeTextureHandle();
+		if (requiresSampler0Texture(pipelineKind) && sampler0TextureHandle == 0L) {
+			throw new IllegalStateException("Textured Metal GUI draw requires a native Sampler0 texture.");
+		}
+		if (pipelineKind == PIPELINE_KIND_PANORAMA && sampler0TextureHandle == 0L) {
+			throw new IllegalStateException("Metal panorama draw requires a native cubemap Sampler0 texture.");
+		}
+
+		MetalBridge metalBridge = this.colorTarget.metalBridge();
+		if (metalBridge == null || !this.colorTarget.hasNativeTextureHandle()) {
+			throw new IllegalStateException("Metal GUI draw requires a native-backed RGBA8 render target.");
+		}
+
+		ByteBuffer vertexStorage = this.vertexBuffer.sliceStorage(0L, this.vertexBuffer.size()).order(ByteOrder.nativeOrder());
+		ByteBuffer syntheticIndices = buildSyntheticIndices(vertexCount, this.pipeline.getVertexFormatMode());
+		if (syntheticIndices == null || !syntheticIndices.hasRemaining()) {
+			return;
+		}
+		int syntheticIndexCount = syntheticIndices.remaining() / Integer.BYTES;
+
+		metalBridge.drawGuiPass(
+			this.colorTarget.nativeTextureHandle(),
+			pipelineKind,
+			vertexStorage,
+			this.pipeline.getVertexFormat().getVertexSize(),
+			Math.max(0, firstVertex),
+			syntheticIndices,
+			Integer.BYTES,
+			0,
+			syntheticIndexCount,
+			projectionData,
+			dynamicData,
+			sampler0TextureHandle,
+			sampler0 != null && (sampler0.sampler.getMagFilter() == FilterMode.LINEAR || sampler0.sampler.getMinFilter() == FilterMode.LINEAR),
+			sampler0 != null && sampler0.sampler.getAddressModeU() == AddressMode.REPEAT,
+			sampler0 != null && sampler0.sampler.getAddressModeV() == AddressMode.REPEAT,
+			this.scissorEnabled,
+			this.scissorX,
+			this.scissorY,
+			this.scissorWidth,
+			this.scissorHeight
+		);
+	}
+
+	private void drawAnimateSpriteBlit() {
+		BoundTexture sprite = this.boundTextures.get("Sprite");
+		if (sprite == null) {
+			return;
+		}
+
+		GpuBufferSlice spriteAnimationInfo = this.uniformSlices.get("SpriteAnimationInfo");
+		if (spriteAnimationInfo == null) {
+			return;
+		}
+
+		ByteBuffer uniformData = sliceUniformBuffer(spriteAnimationInfo);
+		int sourceMipLevel = uniformData.getInt(136);
+		float uPadding = uniformData.getFloat(128);
+		float vPadding = uniformData.getFloat(132);
+		float targetScaleX = uniformData.getFloat(64);
+		float targetScaleY = uniformData.getFloat(64 + (5 * Float.BYTES));
+		float targetX = uniformData.getFloat(64 + (12 * Float.BYTES));
+		float targetY = uniformData.getFloat(64 + (13 * Float.BYTES));
+		int startX = Math.max(0, Math.round(targetX));
+		int startY = Math.max(0, Math.round(targetY));
+		int targetWidth = Math.max(1, Math.round(targetScaleX));
+		int targetHeight = Math.max(1, Math.round(targetScaleY));
+		int atlasWidth = this.colorTarget.getWidth(this.colorTargetMipLevel);
+		int atlasHeight = this.colorTarget.getHeight(this.colorTargetMipLevel);
+		int endX = Math.min(atlasWidth, startX + targetWidth);
+		int endY = Math.min(atlasHeight, startY + targetHeight);
+		if (startX >= endX || startY >= endY) {
+			return;
+		}
+
+		ByteBuffer targetStorage = this.colorTarget.snapshotStorage(this.colorTargetMipLevel).order(ByteOrder.nativeOrder());
+		MetalSampler sampler = (MetalSampler) sprite.sampler;
+		for (int y = startY; y < endY; y++) {
+			float localV = ((y - startY) + 0.5F) / targetHeight;
+			float sampleV = localV + (vPadding * (localV * 2.0F - 1.0F));
+			for (int x = startX; x < endX; x++) {
+				float localU = ((x - startX) + 0.5F) / targetWidth;
+				float sampleU = localU + (uPadding * (localU * 2.0F - 1.0F));
+				SampledColor sampledColor = sampleTexture(sprite.texture, sourceMipLevel, sampler, sampleU, sampleV);
+				int pixelOffset = ((y * atlasWidth) + x) * 4;
+				targetStorage.put(pixelOffset, packColor(sampledColor.red));
+				targetStorage.put(pixelOffset + 1, packColor(sampledColor.green));
+				targetStorage.put(pixelOffset + 2, packColor(sampledColor.blue));
+				targetStorage.put(pixelOffset + 3, packColor(sampledColor.alpha));
+			}
+		}
+
+		this.colorTarget.syncToNative(this.colorTargetMipLevel);
 	}
 
 	@Override
@@ -281,11 +404,13 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 			return SampledColor.WHITE;
 		}
 
-		MetalSampler sampler = (MetalSampler) boundTexture.sampler;
-		int mipLevel = boundTexture.mipLevel;
-		int textureWidth = boundTexture.texture.getWidth(mipLevel);
-		int textureHeight = boundTexture.texture.getHeight(mipLevel);
-		ByteBuffer textureStorage = boundTexture.texture.snapshotStorage(mipLevel).order(ByteOrder.nativeOrder());
+		return sampleTexture(boundTexture.texture, boundTexture.mipLevel, (MetalSampler) boundTexture.sampler, u, v);
+	}
+
+	private SampledColor sampleTexture(MetalTexture texture, int mipLevel, MetalSampler sampler, float u, float v) {
+		int textureWidth = texture.getWidth(mipLevel);
+		int textureHeight = texture.getHeight(mipLevel);
+		ByteBuffer textureStorage = texture.snapshotStorage(mipLevel).order(ByteOrder.nativeOrder());
 		float wrappedU = wrap(u, sampler.getAddressModeU());
 		float wrappedV = wrap(v, sampler.getAddressModeV());
 
@@ -379,8 +504,15 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 	}
 
 	private int resolvePipelineKind() {
-		if ("minecraft:pipeline/panorama".equals(this.pipeline.getLocation().toString())) {
+		String pipelineLocation = this.pipeline.getLocation().toString();
+		if (PANORAMA_LOCATION.equals(pipelineLocation)) {
 			return PIPELINE_KIND_PANORAMA;
+		}
+		if (GUI_TEXTURED_OPAQUE_BACKGROUND_LOCATION.equals(pipelineLocation)) {
+			return PIPELINE_KIND_GUI_TEXTURED_OPAQUE_BACKGROUND;
+		}
+		if (GUI_TEXTURED_PREMULTIPLIED_ALPHA_LOCATION.equals(pipelineLocation)) {
+			return PIPELINE_KIND_GUI_TEXTURED_PREMULTIPLIED_ALPHA;
 		}
 
 		VertexFormat vertexFormat = this.pipeline.getVertexFormat();
@@ -393,6 +525,12 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 		}
 
 		throw new UnsupportedOperationException("Metal hardware GUI path does not support pipeline " + this.pipeline.getLocation() + " yet.");
+	}
+
+	private static boolean requiresSampler0Texture(int pipelineKind) {
+		return pipelineKind == PIPELINE_KIND_GUI_TEXTURED
+			|| pipelineKind == PIPELINE_KIND_GUI_TEXTURED_OPAQUE_BACKGROUND
+			|| pipelineKind == PIPELINE_KIND_GUI_TEXTURED_PREMULTIPLIED_ALPHA;
 	}
 
 	private GpuBufferSlice requireUniform(String name) {
@@ -457,6 +595,39 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 
 	private static float clamp(float value, float min, float max) {
 		return Math.max(min, Math.min(max, value));
+	}
+
+	private static ByteBuffer buildSyntheticIndices(int vertexCount, VertexFormat.Mode mode) {
+		if (vertexCount <= 0) {
+			return null;
+		}
+
+		if (mode == VertexFormat.Mode.QUADS) {
+			int quadCount = vertexCount / 4;
+			if (quadCount <= 0) {
+				return null;
+			}
+
+			ByteBuffer buffer = ByteBuffer.allocateDirect(quadCount * 6 * Integer.BYTES).order(ByteOrder.nativeOrder());
+			for (int quad = 0; quad < quadCount; quad++) {
+				int base = quad * 4;
+				buffer.putInt(base);
+				buffer.putInt(base + 1);
+				buffer.putInt(base + 2);
+				buffer.putInt(base);
+				buffer.putInt(base + 2);
+				buffer.putInt(base + 3);
+			}
+			buffer.flip();
+			return buffer;
+		}
+
+		ByteBuffer buffer = ByteBuffer.allocateDirect(vertexCount * Integer.BYTES).order(ByteOrder.nativeOrder());
+		for (int index = 0; index < vertexCount; index++) {
+			buffer.putInt(index);
+		}
+		buffer.flip();
+		return buffer;
 	}
 
 	private record BoundTexture(MetalTexture texture, int mipLevel, GpuSampler sampler) {

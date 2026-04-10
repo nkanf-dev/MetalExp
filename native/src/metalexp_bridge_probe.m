@@ -47,7 +47,9 @@ typedef struct metalexp_dynamic_transforms_uniform {
 enum {
 	METALEXP_PIPELINE_GUI_COLOR = 1,
 	METALEXP_PIPELINE_GUI_TEXTURED = 2,
-	METALEXP_PIPELINE_PANORAMA = 3
+	METALEXP_PIPELINE_PANORAMA = 3,
+	METALEXP_PIPELINE_GUI_TEXTURED_OPAQUE_BACKGROUND = 4,
+	METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA = 5
 };
 
 static jobjectArray metalexp_create_string_array(JNIEnv *env, const char *capability) {
@@ -337,7 +339,7 @@ static NSString *metalexp_gui_shader_source(void) {
 		"    GuiRasterOut out;\n"
 		"    out.position = projection.ProjMat * dynamicTransforms.ModelViewMat * float4(in.position, 1.0);\n"
 		"    out.color = in.color;\n"
-		"    out.uv0 = (dynamicTransforms.TextureMat * float4(in.uv0, 0.0, 1.0)).xy;\n"
+		"    out.uv0 = in.uv0;\n"
 		"    return out;\n"
 		"}\n"
 		"fragment float4 metalexp_gui_textured_fragment(GuiRasterOut in [[stage_in]], constant DynamicTransforms& dynamicTransforms [[buffer(1)]], texture2d<float> sampler0 [[texture(0)]], sampler samplerState [[sampler(0)]]) {\n"
@@ -387,6 +389,8 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 	static id<MTLRenderPipelineState> cached_color_pipeline = nil;
 	static id<MTLRenderPipelineState> cached_textured_pipeline = nil;
 	static id<MTLRenderPipelineState> cached_panorama_pipeline = nil;
+	static id<MTLRenderPipelineState> cached_textured_opaque_background_pipeline = nil;
+	static id<MTLRenderPipelineState> cached_textured_premultiplied_pipeline = nil;
 	if (cached_device == device) {
 		if (pipeline_kind == METALEXP_PIPELINE_GUI_COLOR && cached_color_pipeline != nil) {
 			return cached_color_pipeline;
@@ -397,12 +401,20 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 		if (pipeline_kind == METALEXP_PIPELINE_PANORAMA && cached_panorama_pipeline != nil) {
 			return cached_panorama_pipeline;
 		}
+		if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_OPAQUE_BACKGROUND && cached_textured_opaque_background_pipeline != nil) {
+			return cached_textured_opaque_background_pipeline;
+		}
+		if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA && cached_textured_premultiplied_pipeline != nil) {
+			return cached_textured_premultiplied_pipeline;
+		}
 	}
 
 	id<MTLLibrary> library = metalexp_gui_library(device);
 	NSString *vertex_name = nil;
 	NSString *fragment_name = nil;
-	if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED) {
+	if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED
+		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_OPAQUE_BACKGROUND
+		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA) {
 		vertex_name = @"metalexp_gui_textured_vertex";
 		fragment_name = @"metalexp_gui_textured_fragment";
 	} else if (pipeline_kind == METALEXP_PIPELINE_PANORAMA) {
@@ -417,7 +429,9 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 	vertex_descriptor.attributes[0].offset = 0;
 	vertex_descriptor.attributes[0].bufferIndex = 0;
 	vertex_descriptor.attributes[0].format = MTLVertexFormatFloat3;
-	if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED) {
+	if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED
+		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_OPAQUE_BACKGROUND
+		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA) {
 		vertex_descriptor.attributes[1].offset = 12;
 		vertex_descriptor.attributes[1].bufferIndex = 0;
 		vertex_descriptor.attributes[1].format = MTLVertexFormatFloat2;
@@ -439,8 +453,18 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 	descriptor.fragmentFunction = [library newFunctionWithName:fragment_name];
 	descriptor.vertexDescriptor = vertex_descriptor;
 	descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA8Unorm;
-	if (pipeline_kind == METALEXP_PIPELINE_PANORAMA) {
+	if (pipeline_kind == METALEXP_PIPELINE_PANORAMA
+		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_OPAQUE_BACKGROUND) {
 		descriptor.colorAttachments[0].blendingEnabled = NO;
+	} else if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED
+		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA) {
+		descriptor.colorAttachments[0].blendingEnabled = YES;
+		descriptor.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+		descriptor.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+		descriptor.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorOne;
+		descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+		descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+		descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 	} else {
 		descriptor.colorAttachments[0].blendingEnabled = YES;
 		descriptor.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
@@ -462,6 +486,10 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 	cached_device = device;
 	if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED) {
 		cached_textured_pipeline = pipeline_state;
+	} else if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_OPAQUE_BACKGROUND) {
+		cached_textured_opaque_background_pipeline = pipeline_state;
+	} else if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA) {
+		cached_textured_premultiplied_pipeline = pipeline_state;
 	} else if (pipeline_kind == METALEXP_PIPELINE_PANORAMA) {
 		cached_panorama_pipeline = pipeline_state;
 	} else {
@@ -1046,7 +1074,9 @@ static void metalexp_draw_gui_pass(
 		[encoder setScissorRect:rect];
 	}
 
-	if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED) {
+	if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED
+		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_OPAQUE_BACKGROUND
+		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA) {
 		metalexp_native_texture *sampler0_texture = metalexp_require_texture(native_sampler0_texture_handle, "sampler0");
 		id<MTLTexture> sampler0 = metalexp_texture_object(sampler0_texture);
 		id<MTLSamplerState> sampler_state = metalexp_sampler_state(device, linear_filtering == JNI_TRUE, repeat_u == JNI_TRUE, repeat_v == JNI_TRUE);
