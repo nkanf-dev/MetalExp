@@ -142,9 +142,7 @@ public final class NativeMetalBridge implements MetalBridge {
 
 	@Override
 	public void blitSurfaceRgba8(long nativeSurfaceHandle, ByteBuffer rgbaPixels, int width, int height) {
-		if (rgbaPixels == null) {
-			throw new IllegalArgumentException("Metal surface blit requires pixel data.");
-		}
+		requireDirectBuffer("Metal surface blit pixel data", rgbaPixels, (long) width * (long) height * 4L);
 
 		runSurfaceOperation(
 			nativeSurfaceHandle,
@@ -192,9 +190,7 @@ public final class NativeMetalBridge implements MetalBridge {
 
 	@Override
 	public void uploadTextureRgba8(long nativeTextureHandle, int mipLevel, int layer, ByteBuffer rgbaPixels, int width, int height) {
-		if (rgbaPixels == null) {
-			throw new IllegalArgumentException("Metal texture upload requires pixel data.");
-		}
+		requireDirectBuffer("Metal texture upload pixel data", rgbaPixels, (long) width * (long) height * 4L);
 
 		runTextureOperation(
 			nativeTextureHandle,
@@ -240,9 +236,10 @@ public final class NativeMetalBridge implements MetalBridge {
 		int scissorWidth,
 		int scissorHeight
 	) {
-		if (vertexData == null || indexData == null || projectionUniform == null || dynamicTransformsUniform == null) {
-			throw new IllegalArgumentException("Metal GUI draw requires vertex, index, projection, and transform buffers.");
-		}
+		requireDirectBuffer("Metal GUI draw vertex buffer", vertexData, 1L);
+		requireDirectBuffer("Metal GUI draw index buffer", indexData, 1L);
+		requireDirectBuffer("Metal GUI draw projection buffer", projectionUniform, 64L);
+		requireDirectBuffer("Metal GUI draw transform buffer", dynamicTransformsUniform, 160L);
 
 		runTextureOperation(
 			nativeTargetTextureHandle,
@@ -274,6 +271,10 @@ public final class NativeMetalBridge implements MetalBridge {
 
 	@Override
 	public void blitSurfaceTexture(long nativeSurfaceHandle, long nativeTextureHandle) {
+		if (nativeTextureHandle == 0L) {
+			throw new IllegalArgumentException("Metal surface texture blit requires a non-zero native texture handle.");
+		}
+
 		runSurfaceOperation(nativeSurfaceHandle, () -> blitSurfaceTexture0(nativeSurfaceHandle, nativeTextureHandle), "surface texture blit");
 	}
 
@@ -411,6 +412,18 @@ public final class NativeMetalBridge implements MetalBridge {
 				error.getMessage() == null ? "Metal bridge native " + operationName + " failed." : error.getMessage(),
 				error
 			);
+		}
+	}
+
+	private static void requireDirectBuffer(String description, ByteBuffer buffer, long minimumCapacity) {
+		if (buffer == null) {
+			throw new IllegalArgumentException(description + " is required.");
+		}
+		if (!buffer.isDirect()) {
+			throw new IllegalArgumentException(description + " must be a direct ByteBuffer.");
+		}
+		if (minimumCapacity > 0L && buffer.capacity() < minimumCapacity) {
+			throw new IllegalArgumentException(description + " is smaller than the required native payload.");
 		}
 	}
 

@@ -213,7 +213,7 @@ class MetalDeviceBackendTest {
 				renderPass.close();
 			}
 
-			if (surface != null && !surface.isAcquired()) {
+			if (surface != null) {
 				surface.close();
 			}
 

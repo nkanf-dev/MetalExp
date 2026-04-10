@@ -153,6 +153,9 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 		if (pipelineKind == PIPELINE_KIND_GUI_TEXTURED && sampler0TextureHandle == 0L) {
 			throw new IllegalStateException("Textured Metal GUI draw requires a native Sampler0 texture.");
 		}
+		if (pipelineKind == PIPELINE_KIND_PANORAMA && sampler0TextureHandle == 0L) {
+			throw new IllegalStateException("Metal panorama draw requires a native cubemap Sampler0 texture.");
+		}
 
 		MetalBridge metalBridge = this.colorTarget.metalBridge();
 		if (metalBridge == null || !this.colorTarget.hasNativeTextureHandle()) {

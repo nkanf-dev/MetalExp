@@ -785,11 +785,21 @@ static void metalexp_blit_surface_rgba8(jlong native_surface_handle, const void 
 			userInfo:nil];
 	}
 
+	NSUInteger drawable_width = drawable.texture.width;
+	NSUInteger drawable_height = drawable.texture.height;
+	NSUInteger copy_width = MIN((NSUInteger)width, drawable_width);
+	NSUInteger copy_height = MIN((NSUInteger)height, drawable_height);
+	if (copy_width == 0 || copy_height == 0) {
+		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
+			reason:@"Metal surface blit requires a drawable with non-zero dimensions."
+			userInfo:nil];
+	}
+
 	[blit_encoder copyFromBuffer:staging_buffer
 		sourceOffset:0
 		sourceBytesPerRow:(NSUInteger)width * 4U
 		sourceBytesPerImage:(NSUInteger)width * (NSUInteger)height * 4U
-		sourceSize:MTLSizeMake(width, height, 1)
+		sourceSize:MTLSizeMake(copy_width, copy_height, 1)
 		toTexture:drawable.texture
 		destinationSlice:0
 		destinationLevel:0
