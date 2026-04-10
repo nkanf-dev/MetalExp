@@ -15,7 +15,7 @@ The project aims to introduce a real `MetalBackend` alongside Mojang's OpenGL an
 
 ## Current Status
 
-The repository currently covers the bootstrap side of the project:
+The repository now covers the first real hardware-GUI milestone of the project:
 
 - project-owned graphics API preference and config persistence
 - startup backend planning with fallback and strict modes
@@ -24,16 +24,17 @@ The repository currently covers the bootstrap side of the project:
 - startup backend negotiation override driven by `MetalExp` config
 - a real Java-side `MetalBackend` creation path that now returns a `GpuDevice`
 - a native bridge for library loading, process-level Metal capability checks, window-level Cocoa host probing, and persistent `CAMetalLayer` host-surface bootstrap/release
-- bootstrap Metal device, surface, buffer, texture, sampler, query, and command-encoder placeholders that are sufficient to pass `RenderSystem.initRenderer(...)` and `MainTarget` attachment allocation
+- bootstrap Metal device, surface, buffer, texture, sampler, query, and command-encoder paths that are sufficient to pass `RenderSystem.initRenderer(...)`, `MainTarget` attachment allocation, and real native GUI/panorama draws into a `CAMetalDrawable`
 
 What is still missing:
 
 - shader translation and pipeline compilation
-- real Metal render passes, pipeline binding, and command submission
-- screen blit from the main render target into a `CAMetalDrawable`
-- rendering viability in menus and world rendering
+- broad pipeline coverage beyond the currently wired menu-oriented passes
+- world rendering viability, resource binding breadth, and general-purpose command submission
+- resize/shutdown hardening and broader runtime validation
+- a maintainable native split for the growing Metal bridge instead of the current single-file implementation
 
-Today, selecting `METAL` means the game really attempts Metal backend creation instead of failing up front. On supported macOS setups, `MetalExp` now probes Metal/Cocoa readiness, bootstraps a persistent native host surface, constructs a Java `GpuDevice`, and successfully clears Minecraft's renderer initialization path through `RenderSystem.initRenderer(...)` and `MainTarget` allocation. It is still not a working renderer yet, because render-pass, pipeline, texture blit, and presentation work remain unfinished.
+Today, selecting `METAL` means the game really attempts Metal backend creation instead of failing up front. On supported macOS setups, `MetalExp` now probes Metal/Cocoa readiness, bootstraps a persistent native host surface, constructs a Java `GpuDevice`, uploads both 2D and cubemap textures through the native bridge, and executes native Metal GUI/panorama draws that can reach the Minecraft main menu in `STRICT` mode. It is still not a general-purpose renderer yet, because large parts of the pipeline matrix, world rendering, shader toolchain work, and backend hardening remain unfinished.
 
 ## Target Environment
 
@@ -63,10 +64,10 @@ Canonical project references:
 ## Near-Term Roadmap
 
 1. Replace the current Metal scaffolding with a real `MetalBackend` entry path.
-2. Replace bootstrap resource placeholders with real Metal render-pass and pipeline execution.
+2. Expand real Metal render-pass coverage from the current menu-oriented passes to the rest of the GUI pipeline matrix.
 3. Add the shader toolchain path from GLSL to SPIR-V to MSL.
-4. Wire drawable blit/present into the native bridge and surface backend.
-5. Reach first rendering viability for startup, menu entry, resize, and shutdown.
+4. Carry the renderer from main-menu viability into in-world rendering.
+5. Split and harden the native bridge for resize, shutdown, diagnostics, and long-term maintenance.
 
 ## Building
 
