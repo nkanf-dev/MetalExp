@@ -199,10 +199,14 @@ class MetalDeviceBackendTest {
 			renderPass = null;
 
 			surface.blitFromTexture(commandEncoder, colorTextureView);
+			assertEquals(0, bridge.commandContextSubmitCount);
 			commandEncoder.submit();
 			surface.present();
 			assertTrue(bridge.blitCalled.get());
 			assertEquals(((MetalTexture) colorTexture).nativeTextureHandle(), bridge.lastBlitTextureHandle);
+			assertEquals(1, bridge.commandContextCreateCount);
+			assertEquals(1, bridge.commandContextSubmitCount);
+			assertEquals(1, bridge.commandContextReleaseCount);
 
 			colorTextureView.close();
 			colorTextureB.close();
@@ -321,9 +325,10 @@ class MetalDeviceBackendTest {
 	}
 
 	@Test
-	void animateSpriteBlitDrawCopiesSpriteIntoAtlasTarget() {
+	void animateSpriteBlitDrawDelegatesToNativeBridge() {
+		SurfaceTrackingBridge bridge = new SurfaceTrackingBridge();
 		MetalDeviceBackend backend = new MetalDeviceBackend(
-			new SurfaceTrackingBridge(),
+			bridge,
 			new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
 		);
 		MetalTexture atlasTexture = (MetalTexture) backend.createTexture("atlas-target", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 8, 8, 1, 1);
@@ -360,11 +365,67 @@ class MetalDeviceBackendTest {
 			renderPass.close();
 		}
 
-		ByteBuffer atlasPixels = atlasTexture.readRegion(0, 2, 3, 2, 2);
-		assertPixelRgba(atlasPixels, 2, 0, 0, 255, 0, 0, 255);
-		assertPixelRgba(atlasPixels, 2, 1, 0, 0, 255, 0, 255);
-		assertPixelRgba(atlasPixels, 2, 0, 1, 0, 0, 255, 255);
-		assertPixelRgba(atlasPixels, 2, 1, 1, 255, 255, 255, 255);
+		assertTrue(bridge.animatedSpriteBlitCalled.get());
+		assertEquals(atlasTexture.nativeTextureHandle(), bridge.lastAnimatedSpriteTargetTextureHandle);
+		assertEquals(spriteTexture.nativeTextureHandle(), bridge.lastAnimatedSpriteSourceTextureHandle);
+		assertEquals(0, bridge.lastAnimatedSpriteTargetMipLevel);
+		assertEquals(0, bridge.lastAnimatedSpriteSourceMipLevel);
+		assertEquals(2, bridge.lastAnimatedSpriteDstX);
+		assertEquals(3, bridge.lastAnimatedSpriteDstY);
+		assertEquals(2, bridge.lastAnimatedSpriteDstWidth);
+		assertEquals(2, bridge.lastAnimatedSpriteDstHeight);
+		assertEquals(0.0F, bridge.lastAnimatedSpriteLocalUMin, 0.0001F);
+		assertEquals(0.0F, bridge.lastAnimatedSpriteLocalVMin, 0.0001F);
+		assertEquals(1.0F, bridge.lastAnimatedSpriteLocalUMax, 0.0001F);
+		assertEquals(1.0F, bridge.lastAnimatedSpriteLocalVMax, 0.0001F);
+		assertFalse(bridge.lastAnimatedSpriteLinearFiltering);
+		assertFalse(bridge.lastAnimatedSpriteRepeatU);
+		assertFalse(bridge.lastAnimatedSpriteRepeatV);
+	}
+
+	@Test
+	void animateSpriteBlitDrawFailsWithoutNativeTextureHandles() {
+		SurfaceTrackingBridge bridge = new SurfaceTrackingBridge();
+		bridge.disableNativeTextureCreation = true;
+		MetalDeviceBackend backend = new MetalDeviceBackend(
+			bridge,
+			new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+		);
+		MetalTexture atlasTexture = (MetalTexture) backend.createTexture("atlas-target", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 8, 8, 1, 1);
+		MetalTextureView atlasView = (MetalTextureView) backend.createTextureView(atlasTexture);
+		MetalTexture spriteTexture = (MetalTexture) backend.createTexture("sprite-source", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 2, 2, 1, 1);
+		MetalTextureView spriteView = (MetalTextureView) backend.createTextureView(spriteTexture);
+		MetalSampler sampler = (MetalSampler) backend.createSampler(
+			AddressMode.CLAMP_TO_EDGE,
+			AddressMode.CLAMP_TO_EDGE,
+			FilterMode.NEAREST,
+			FilterMode.NEAREST,
+			1,
+			java.util.OptionalDouble.empty()
+		);
+		MetalBuffer spriteAnimationInfo = (MetalBuffer) backend.createBuffer(
+			() -> "sprite-animation-info",
+			GpuBuffer.USAGE_UNIFORM,
+			spriteAnimationInfoBytes(2.0F, 3.0F, 2.0F, 2.0F, 0.0F, 0.0F, 0)
+		);
+		RenderPass renderPass = new RenderPass(
+			new MetalRenderPassBackend(atlasView),
+			backend,
+			() -> {
+			}
+		);
+
+		try {
+			renderPass.setPipeline(RenderPipelines.ANIMATE_SPRITE_BLIT);
+			renderPass.bindTexture("Sprite", spriteView, sampler);
+			renderPass.setUniform("SpriteAnimationInfo", spriteAnimationInfo.slice());
+
+			IllegalStateException exception = assertThrows(IllegalStateException.class, () -> renderPass.draw(0, 6));
+			assertEquals("Metal animated sprite blit requires a native-backed atlas target texture.", exception.getMessage());
+			assertFalse(bridge.animatedSpriteBlitCalled.get());
+		} finally {
+			renderPass.close();
+		}
 	}
 
 	@Test
@@ -936,10 +997,15 @@ class MetalDeviceBackendTest {
 		private final AtomicLong configuredHandle = new AtomicLong(-1L);
 		private final AtomicLong releasedHandle = new AtomicLong(-1L);
 		private final AtomicLong nextTextureHandle = new AtomicLong(100L);
+		private final AtomicLong nextCommandContextHandle = new AtomicLong(1000L);
 		private final AtomicBoolean acquired = new AtomicBoolean();
 		private final AtomicBoolean blitCalled = new AtomicBoolean();
+		private final AtomicBoolean animatedSpriteBlitCalled = new AtomicBoolean();
 		private final AtomicBoolean guiDrawCalled = new AtomicBoolean();
 		private final AtomicBoolean presented = new AtomicBoolean();
+		private int commandContextCreateCount;
+		private int commandContextSubmitCount;
+		private int commandContextReleaseCount;
 		private int configuredWidth;
 		private int configuredHeight;
 		private boolean configuredVsync;
@@ -957,9 +1023,25 @@ class MetalDeviceBackendTest {
 		private int lastUploadedHeight;
 		private boolean lastCreatedCubemapCompatible;
 		private boolean lastLinearFiltering;
+		private boolean lastAnimatedSpriteLinearFiltering;
+		private boolean lastAnimatedSpriteRepeatU;
+		private boolean lastAnimatedSpriteRepeatV;
 		private boolean sawUploadedLayer3;
+		private boolean disableNativeTextureCreation;
 		private byte[] lastUploadedPixels = new byte[0];
 		private ByteBuffer lastDynamicTransformsUniform = ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder());
+		private long lastAnimatedSpriteTargetTextureHandle;
+		private long lastAnimatedSpriteSourceTextureHandle;
+		private int lastAnimatedSpriteTargetMipLevel;
+		private int lastAnimatedSpriteSourceMipLevel;
+		private int lastAnimatedSpriteDstX;
+		private int lastAnimatedSpriteDstY;
+		private int lastAnimatedSpriteDstWidth;
+		private int lastAnimatedSpriteDstHeight;
+		private float lastAnimatedSpriteLocalUMin;
+		private float lastAnimatedSpriteLocalVMin;
+		private float lastAnimatedSpriteLocalUMax;
+		private float lastAnimatedSpriteLocalVMax;
 		private RuntimeException acquireFailure;
 
 		@Override
@@ -995,6 +1077,22 @@ class MetalDeviceBackendTest {
 		}
 
 		@Override
+		public long createCommandContext() {
+			this.commandContextCreateCount++;
+			return this.nextCommandContextHandle.getAndIncrement();
+		}
+
+		@Override
+		public void submitCommandContext(long nativeCommandContextHandle) {
+			this.commandContextSubmitCount++;
+		}
+
+		@Override
+		public void releaseCommandContext(long nativeCommandContextHandle) {
+			this.commandContextReleaseCount++;
+		}
+
+		@Override
 		public void blitSurfaceRgba8(long nativeSurfaceHandle, ByteBuffer rgbaPixels, int width, int height) {
 			this.blitCalled.set(true);
 			this.blitWidth = width;
@@ -1003,6 +1101,10 @@ class MetalDeviceBackendTest {
 
 		@Override
 		public long createTexture(int width, int height, int depthOrLayers, int mipLevels, boolean renderAttachment, boolean shaderRead, boolean cubemapCompatible) {
+			if (this.disableNativeTextureCreation) {
+				throw new UnsupportedOperationException("native textures disabled for test");
+			}
+
 			this.lastCreatedDepthOrLayers = depthOrLayers;
 			this.lastCreatedCubemapCompatible = cubemapCompatible;
 			return this.nextTextureHandle.getAndIncrement();
@@ -1024,6 +1126,7 @@ class MetalDeviceBackendTest {
 
 		@Override
 		public void drawGuiPass(
+			long nativeCommandContextHandle,
 			long nativeTargetTextureHandle,
 			int pipelineKind,
 			ByteBuffer vertexData,
@@ -1055,7 +1158,46 @@ class MetalDeviceBackendTest {
 		}
 
 		@Override
-		public void blitSurfaceTexture(long nativeSurfaceHandle, long nativeTextureHandle) {
+		public void blitAnimatedSprite(
+			long nativeCommandContextHandle,
+			long nativeTargetTextureHandle,
+			int targetMipLevel,
+			long nativeSourceTextureHandle,
+			int sourceMipLevel,
+			int dstX,
+			int dstY,
+			int dstWidth,
+			int dstHeight,
+			float localUMin,
+			float localVMin,
+			float localUMax,
+			float localVMax,
+			float uPadding,
+			float vPadding,
+			boolean linearFiltering,
+			boolean repeatU,
+			boolean repeatV
+		) {
+			this.animatedSpriteBlitCalled.set(true);
+			this.lastAnimatedSpriteTargetTextureHandle = nativeTargetTextureHandle;
+			this.lastAnimatedSpriteTargetMipLevel = targetMipLevel;
+			this.lastAnimatedSpriteSourceTextureHandle = nativeSourceTextureHandle;
+			this.lastAnimatedSpriteSourceMipLevel = sourceMipLevel;
+			this.lastAnimatedSpriteDstX = dstX;
+			this.lastAnimatedSpriteDstY = dstY;
+			this.lastAnimatedSpriteDstWidth = dstWidth;
+			this.lastAnimatedSpriteDstHeight = dstHeight;
+			this.lastAnimatedSpriteLocalUMin = localUMin;
+			this.lastAnimatedSpriteLocalVMin = localVMin;
+			this.lastAnimatedSpriteLocalUMax = localUMax;
+			this.lastAnimatedSpriteLocalVMax = localVMax;
+			this.lastAnimatedSpriteLinearFiltering = linearFiltering;
+			this.lastAnimatedSpriteRepeatU = repeatU;
+			this.lastAnimatedSpriteRepeatV = repeatV;
+		}
+
+		@Override
+		public void blitSurfaceTexture(long nativeCommandContextHandle, long nativeSurfaceHandle, long nativeTextureHandle) {
 			this.blitCalled.set(true);
 			this.lastBlitTextureHandle = nativeTextureHandle;
 		}

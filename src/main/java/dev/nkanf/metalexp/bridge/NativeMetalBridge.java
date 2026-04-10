@@ -141,6 +141,47 @@ public final class NativeMetalBridge implements MetalBridge {
 	}
 
 	@Override
+	public long createCommandContext() {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded()) {
+			throw new IllegalStateException(loadResult.detail());
+		}
+
+		try {
+			return createCommandContext0();
+		} catch (UnsatisfiedLinkError error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native command context create entrypoint is missing." : error.getMessage(),
+				error
+			);
+		} catch (RuntimeException error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native command context create failed." : error.getMessage(),
+				error
+			);
+		}
+	}
+
+	@Override
+	public void submitCommandContext(long nativeCommandContextHandle) {
+		runCommandContextOperation(nativeCommandContextHandle, () -> submitCommandContext0(nativeCommandContextHandle), "command context submit");
+	}
+
+	@Override
+	public void releaseCommandContext(long nativeCommandContextHandle) {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded() || nativeCommandContextHandle == 0L) {
+			return;
+		}
+
+		try {
+			releaseCommandContext0(nativeCommandContextHandle);
+		} catch (UnsatisfiedLinkError | RuntimeException ignored) {
+			// Command context release is best-effort during the experimental milestone.
+		}
+	}
+
+	@Override
 	public void blitSurfaceRgba8(long nativeSurfaceHandle, ByteBuffer rgbaPixels, int width, int height) {
 		requireDirectBuffer("Metal surface blit pixel data", rgbaPixels, (long) width * (long) height * 4L);
 
@@ -215,6 +256,7 @@ public final class NativeMetalBridge implements MetalBridge {
 
 	@Override
 	public void drawGuiPass(
+		long nativeCommandContextHandle,
 		long nativeTargetTextureHandle,
 		int pipelineKind,
 		ByteBuffer vertexData,
@@ -241,9 +283,11 @@ public final class NativeMetalBridge implements MetalBridge {
 		requireDirectBuffer("Metal GUI draw projection buffer", projectionUniform, 64L);
 		requireDirectBuffer("Metal GUI draw transform buffer", dynamicTransformsUniform, 160L);
 
-		runTextureOperation(
+		runCommandContextTextureOperation(
+			nativeCommandContextHandle,
 			nativeTargetTextureHandle,
 			() -> drawGuiPass0(
+				nativeCommandContextHandle,
 				nativeTargetTextureHandle,
 				pipelineKind,
 				vertexData,
@@ -270,12 +314,69 @@ public final class NativeMetalBridge implements MetalBridge {
 	}
 
 	@Override
-	public void blitSurfaceTexture(long nativeSurfaceHandle, long nativeTextureHandle) {
+	public void blitAnimatedSprite(
+		long nativeCommandContextHandle,
+		long nativeTargetTextureHandle,
+		int targetMipLevel,
+		long nativeSourceTextureHandle,
+		int sourceMipLevel,
+		int dstX,
+		int dstY,
+		int dstWidth,
+		int dstHeight,
+		float localUMin,
+		float localVMin,
+		float localUMax,
+		float localVMax,
+		float uPadding,
+		float vPadding,
+		boolean linearFiltering,
+		boolean repeatU,
+		boolean repeatV
+	) {
+		if (nativeSourceTextureHandle == 0L) {
+			throw new IllegalArgumentException("Metal animated sprite blit requires a non-zero native source texture handle.");
+		}
+
+		runCommandContextTextureOperation(
+			nativeCommandContextHandle,
+			nativeTargetTextureHandle,
+			() -> blitAnimatedSprite0(
+				nativeCommandContextHandle,
+				nativeTargetTextureHandle,
+				targetMipLevel,
+				nativeSourceTextureHandle,
+				sourceMipLevel,
+				dstX,
+				dstY,
+				dstWidth,
+				dstHeight,
+				localUMin,
+				localVMin,
+				localUMax,
+				localVMax,
+				uPadding,
+				vPadding,
+				linearFiltering,
+				repeatU,
+				repeatV
+			),
+			"animated sprite blit"
+		);
+	}
+
+	@Override
+	public void blitSurfaceTexture(long nativeCommandContextHandle, long nativeSurfaceHandle, long nativeTextureHandle) {
 		if (nativeTextureHandle == 0L) {
 			throw new IllegalArgumentException("Metal surface texture blit requires a non-zero native texture handle.");
 		}
 
-		runSurfaceOperation(nativeSurfaceHandle, () -> blitSurfaceTexture0(nativeSurfaceHandle, nativeTextureHandle), "surface texture blit");
+		runCommandContextSurfaceOperation(
+			nativeCommandContextHandle,
+			nativeSurfaceHandle,
+			() -> blitSurfaceTexture0(nativeCommandContextHandle, nativeSurfaceHandle, nativeTextureHandle),
+			"surface texture blit"
+		);
 	}
 
 	private MetalBridgeProbe fromLoadResult(MetalBridgeLoadResult loadResult) {
@@ -390,6 +491,47 @@ public final class NativeMetalBridge implements MetalBridge {
 		}
 	}
 
+	private void runCommandContextOperation(long nativeCommandContextHandle, Runnable operation, String operationName) {
+		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
+		if (!loadResult.isLoaded()) {
+			throw new IllegalStateException(loadResult.detail());
+		}
+
+		if (nativeCommandContextHandle == 0L) {
+			throw new IllegalArgumentException("Metal " + operationName + " requires a non-zero native command context handle.");
+		}
+
+		try {
+			operation.run();
+		} catch (UnsatisfiedLinkError error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native " + operationName + " entrypoint is missing." : error.getMessage(),
+				error
+			);
+		} catch (RuntimeException error) {
+			throw new IllegalStateException(
+				error.getMessage() == null ? "Metal bridge native " + operationName + " failed." : error.getMessage(),
+				error
+			);
+		}
+	}
+
+	private void runCommandContextTextureOperation(long nativeCommandContextHandle, long nativeTextureHandle, Runnable operation, String operationName) {
+		if (nativeTextureHandle == 0L) {
+			throw new IllegalArgumentException("Metal " + operationName + " requires a non-zero native texture handle.");
+		}
+
+		runCommandContextOperation(nativeCommandContextHandle, operation, operationName);
+	}
+
+	private void runCommandContextSurfaceOperation(long nativeCommandContextHandle, long nativeSurfaceHandle, Runnable operation, String operationName) {
+		if (nativeSurfaceHandle == 0L) {
+			throw new IllegalArgumentException("Metal " + operationName + " requires a non-zero native surface handle.");
+		}
+
+		runCommandContextOperation(nativeCommandContextHandle, operation, operationName);
+	}
+
 	private void runTextureOperation(long nativeTextureHandle, Runnable operation, String operationName) {
 		MetalBridgeLoadResult loadResult = NativeMetalBridgeLoader.ensureLoaded();
 		if (!loadResult.isLoaded()) {
@@ -437,6 +579,12 @@ public final class NativeMetalBridge implements MetalBridge {
 
 	private static native void acquireSurface0(long nativeSurfaceHandle);
 
+	private static native long createCommandContext0();
+
+	private static native void submitCommandContext0(long nativeCommandContextHandle);
+
+	private static native void releaseCommandContext0(long nativeCommandContextHandle);
+
 	private static native void blitSurfaceRgba80(long nativeSurfaceHandle, ByteBuffer rgbaPixels, int width, int height);
 
 	private static native long createTexture0(int width, int height, int depthOrLayers, int mipLevels, boolean renderAttachment, boolean shaderRead, boolean cubemapCompatible);
@@ -446,6 +594,7 @@ public final class NativeMetalBridge implements MetalBridge {
 	private static native void releaseTexture0(long nativeTextureHandle);
 
 	private static native void drawGuiPass0(
+		long nativeCommandContextHandle,
 		long nativeTargetTextureHandle,
 		int pipelineKind,
 		ByteBuffer vertexData,
@@ -468,7 +617,28 @@ public final class NativeMetalBridge implements MetalBridge {
 		int scissorHeight
 	);
 
-	private static native void blitSurfaceTexture0(long nativeSurfaceHandle, long nativeTextureHandle);
+	private static native void blitAnimatedSprite0(
+		long nativeCommandContextHandle,
+		long nativeTargetTextureHandle,
+		int targetMipLevel,
+		long nativeSourceTextureHandle,
+		int sourceMipLevel,
+		int dstX,
+		int dstY,
+		int dstWidth,
+		int dstHeight,
+		float localUMin,
+		float localVMin,
+		float localUMax,
+		float localVMax,
+		float uPadding,
+		float vPadding,
+		boolean linearFiltering,
+		boolean repeatU,
+		boolean repeatV
+	);
+
+	private static native void blitSurfaceTexture0(long nativeCommandContextHandle, long nativeSurfaceHandle, long nativeTextureHandle);
 
 	private static native void presentSurface0(long nativeSurfaceHandle);
 

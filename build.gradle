@@ -8,6 +8,12 @@ group = project.maven_group
 def junitJupiterVersion = '5.10.0'
 def isMacOs = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac")
 def nativeBridgeOutput = layout.buildDirectory.file("native/libmetalexp_native.dylib")
+def nativeBridgeSources = fileTree("${project.projectDir}/native/src") {
+	include("*.m")
+}
+def nativeBridgeHeaders = fileTree("${project.projectDir}/native/src") {
+	include("*.h")
+}
 
 base {
 	archivesName = project.mod_id
@@ -57,34 +63,38 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.register("buildNativeMacosBridge", Exec) {
 	onlyIf { isMacOs }
-	inputs.file("native/src/metalexp_bridge_probe.m")
+	inputs.files(nativeBridgeSources)
+	inputs.files(nativeBridgeHeaders)
 	outputs.file(nativeBridgeOutput)
 	workingDir project.projectDir
 
 	doFirst {
 		nativeBridgeOutput.get().asFile.parentFile.mkdirs()
-	}
 
-	def javaHome = System.getProperty("java.home")
-	commandLine(
-		"xcrun",
-		"clang",
-		"-fobjc-arc",
-		"-dynamiclib",
-		"-I${javaHome}/include",
-		"-I${javaHome}/include/darwin",
-		"${project.projectDir}/native/src/metalexp_bridge_probe.m",
-		"-framework",
-		"AppKit",
-		"-framework",
-		"Foundation",
-		"-framework",
-		"Metal",
-		"-framework",
-		"QuartzCore",
-		"-o",
-		nativeBridgeOutput.get().asFile.absolutePath
-	)
+		def nativeSourcePaths = nativeBridgeSources.files
+			.sort { left, right -> left.name <=> right.name }
+			.collect { it.absolutePath }
+		def javaHome = System.getProperty("java.home")
+		commandLine([
+			"xcrun",
+			"clang",
+			"-fobjc-arc",
+			"-dynamiclib",
+			"-I${javaHome}/include",
+			"-I${javaHome}/include/darwin",
+			*nativeSourcePaths,
+			"-framework",
+			"AppKit",
+			"-framework",
+			"Foundation",
+			"-framework",
+			"Metal",
+			"-framework",
+			"QuartzCore",
+			"-o",
+			nativeBridgeOutput.get().asFile.absolutePath
+		])
+	}
 }
 
 test {

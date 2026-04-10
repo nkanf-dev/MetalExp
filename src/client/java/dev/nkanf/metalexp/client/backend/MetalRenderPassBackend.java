@@ -20,6 +20,7 @@ import java.nio.ByteOrder;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.LongConsumer;
 import java.util.function.Supplier;
 
 final class MetalRenderPassBackend implements RenderPassBackend {
@@ -36,6 +37,7 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 
 	private final MetalTexture colorTarget;
 	private final int colorTargetMipLevel;
+	private final MetalCommandEncoderBackend commandEncoderBackend;
 	private final Map<String, BoundTexture> boundTextures = new HashMap<>();
 	private final Map<String, GpuBufferSlice> uniformSlices = new HashMap<>();
 
@@ -50,6 +52,10 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 	private int scissorHeight;
 
 	MetalRenderPassBackend(GpuTextureView colorTextureView) {
+		this(null, colorTextureView);
+	}
+
+	MetalRenderPassBackend(MetalCommandEncoderBackend commandEncoderBackend, GpuTextureView colorTextureView) {
 		if (colorTextureView == null || colorTextureView.isClosed()) {
 			throw new IllegalArgumentException("Metal render pass requires a live color texture view.");
 		}
@@ -62,6 +68,7 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 			throw new IllegalArgumentException("Metal render pass currently only supports RGBA8_UNORM color targets.");
 		}
 
+		this.commandEncoderBackend = commandEncoderBackend;
 		this.colorTarget = metalTexture;
 		this.colorTargetMipLevel = colorTextureView.baseMipLevel();
 	}
@@ -168,7 +175,8 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 			throw new IllegalStateException("Metal GUI draw requires a native-backed RGBA8 render target.");
 		}
 
-		metalBridge.drawGuiPass(
+		withCommandContext(nativeCommandContextHandle -> metalBridge.drawGuiPass(
+			nativeCommandContextHandle,
 			this.colorTarget.nativeTextureHandle(),
 			pipelineKind,
 			vertexStorage,
@@ -189,7 +197,7 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 			this.scissorY,
 			this.scissorWidth,
 			this.scissorHeight
-		);
+		));
 	}
 
 	@Override
@@ -250,7 +258,8 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 		}
 		int syntheticIndexCount = syntheticIndices.remaining() / Integer.BYTES;
 
-		metalBridge.drawGuiPass(
+		withCommandContext(nativeCommandContextHandle -> metalBridge.drawGuiPass(
+			nativeCommandContextHandle,
 			this.colorTarget.nativeTextureHandle(),
 			pipelineKind,
 			vertexStorage,
@@ -271,7 +280,7 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 			this.scissorY,
 			this.scissorWidth,
 			this.scissorHeight
-		);
+		));
 	}
 
 	private void drawAnimateSpriteBlit() {
@@ -293,36 +302,57 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 		float targetScaleY = uniformData.getFloat(64 + (5 * Float.BYTES));
 		float targetX = uniformData.getFloat(64 + (12 * Float.BYTES));
 		float targetY = uniformData.getFloat(64 + (13 * Float.BYTES));
-		int startX = Math.max(0, Math.round(targetX));
-		int startY = Math.max(0, Math.round(targetY));
 		int targetWidth = Math.max(1, Math.round(targetScaleX));
 		int targetHeight = Math.max(1, Math.round(targetScaleY));
+		int unclippedStartX = Math.round(targetX);
+		int unclippedStartY = Math.round(targetY);
 		int atlasWidth = this.colorTarget.getWidth(this.colorTargetMipLevel);
 		int atlasHeight = this.colorTarget.getHeight(this.colorTargetMipLevel);
-		int endX = Math.min(atlasWidth, startX + targetWidth);
-		int endY = Math.min(atlasHeight, startY + targetHeight);
+		int startX = Math.max(0, unclippedStartX);
+		int startY = Math.max(0, unclippedStartY);
+		int endX = Math.min(atlasWidth, unclippedStartX + targetWidth);
+		int endY = Math.min(atlasHeight, unclippedStartY + targetHeight);
 		if (startX >= endX || startY >= endY) {
 			return;
 		}
 
-		ByteBuffer targetStorage = this.colorTarget.snapshotStorage(this.colorTargetMipLevel).order(ByteOrder.nativeOrder());
-		MetalSampler sampler = (MetalSampler) sprite.sampler;
-		for (int y = startY; y < endY; y++) {
-			float localV = ((y - startY) + 0.5F) / targetHeight;
-			float sampleV = localV + (vPadding * (localV * 2.0F - 1.0F));
-			for (int x = startX; x < endX; x++) {
-				float localU = ((x - startX) + 0.5F) / targetWidth;
-				float sampleU = localU + (uPadding * (localU * 2.0F - 1.0F));
-				SampledColor sampledColor = sampleTexture(sprite.texture, sourceMipLevel, sampler, sampleU, sampleV);
-				int pixelOffset = ((y * atlasWidth) + x) * 4;
-				targetStorage.put(pixelOffset, packColor(sampledColor.red));
-				targetStorage.put(pixelOffset + 1, packColor(sampledColor.green));
-				targetStorage.put(pixelOffset + 2, packColor(sampledColor.blue));
-				targetStorage.put(pixelOffset + 3, packColor(sampledColor.alpha));
-			}
+		if (!this.colorTarget.hasNativeTextureHandle()) {
+			throw new IllegalStateException("Metal animated sprite blit requires a native-backed atlas target texture.");
+		}
+		if (!sprite.texture.hasNativeTextureHandle()) {
+			throw new IllegalStateException("Metal animated sprite blit requires a native-backed sprite source texture.");
 		}
 
-		this.colorTarget.syncToNative(this.colorTargetMipLevel);
+		MetalBridge metalBridge = this.colorTarget.metalBridge();
+		if (metalBridge == null) {
+			throw new IllegalStateException("Metal animated sprite blit requires an active native bridge.");
+		}
+
+		float localUMin = (float) (startX - unclippedStartX) / (float) targetWidth;
+		float localVMin = (float) (startY - unclippedStartY) / (float) targetHeight;
+		float localUMax = (float) (endX - unclippedStartX) / (float) targetWidth;
+		float localVMax = (float) (endY - unclippedStartY) / (float) targetHeight;
+		MetalSampler sampler = (MetalSampler) sprite.sampler;
+		withCommandContext(nativeCommandContextHandle -> metalBridge.blitAnimatedSprite(
+			nativeCommandContextHandle,
+			this.colorTarget.nativeTextureHandle(),
+			this.colorTargetMipLevel,
+			sprite.texture.nativeTextureHandle(),
+			sourceMipLevel,
+			startX,
+			startY,
+			endX - startX,
+			endY - startY,
+			localUMin,
+			localVMin,
+			localUMax,
+			localVMax,
+			uPadding,
+			vPadding,
+			sampler.getMagFilter() == FilterMode.LINEAR || sampler.getMinFilter() == FilterMode.LINEAR,
+			sampler.getAddressModeU() == AddressMode.REPEAT,
+			sampler.getAddressModeV() == AddressMode.REPEAT
+		));
 	}
 
 	@Override
@@ -547,6 +577,26 @@ final class MetalRenderPassBackend implements RenderPassBackend {
 		}
 
 		return metalBuffer.sliceStorage(slice.offset(), slice.length()).order(ByteOrder.nativeOrder());
+	}
+
+	private void withCommandContext(LongConsumer consumer) {
+		MetalBridge metalBridge = this.colorTarget.metalBridge();
+		if (metalBridge == null) {
+			throw new IllegalStateException("Metal render pass requires an active native bridge.");
+		}
+
+		if (this.commandEncoderBackend != null) {
+			consumer.accept(this.commandEncoderBackend.commandContextHandle());
+			return;
+		}
+
+		long nativeCommandContextHandle = metalBridge.createCommandContext();
+		try {
+			consumer.accept(nativeCommandContextHandle);
+			metalBridge.submitCommandContext(nativeCommandContextHandle);
+		} finally {
+			metalBridge.releaseCommandContext(nativeCommandContextHandle);
+		}
 	}
 
 	private static int readIndex(ByteBuffer indexStorage, int index, VertexFormat.IndexType indexType) {

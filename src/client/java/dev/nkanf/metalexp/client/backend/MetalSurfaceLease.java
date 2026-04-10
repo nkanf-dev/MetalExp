@@ -44,7 +44,18 @@ final class MetalSurfaceLease implements AutoCloseable {
 
 	void blitTexture(long nativeTextureHandle) {
 		this.ensureOpen();
-		this.metalBridge.blitSurfaceTexture(this.descriptor.nativeSurfaceHandle(), nativeTextureHandle);
+		long nativeCommandContextHandle = this.metalBridge.createCommandContext();
+		try {
+			this.metalBridge.blitSurfaceTexture(nativeCommandContextHandle, this.descriptor.nativeSurfaceHandle(), nativeTextureHandle);
+			this.metalBridge.submitCommandContext(nativeCommandContextHandle);
+		} finally {
+			this.metalBridge.releaseCommandContext(nativeCommandContextHandle);
+		}
+	}
+
+	void blitTexture(long nativeCommandContextHandle, long nativeTextureHandle) {
+		this.ensureOpen();
+		this.metalBridge.blitSurfaceTexture(nativeCommandContextHandle, this.descriptor.nativeSurfaceHandle(), nativeTextureHandle);
 	}
 
 	void present() {
