@@ -255,6 +255,7 @@ static CAMetalLayer *metalexp_create_layer(NSWindow *window, NSView *view, id<MT
 	}
 
 	layer.device = device;
+	layer.pixelFormat = MTLPixelFormatRGBA8Unorm;
 	CGFloat contents_scale = window.screen != nil ? window.screen.backingScaleFactor : 1.0;
 	if (contents_scale <= 0.0) {
 		contents_scale = 1.0;
@@ -337,7 +338,7 @@ static NSString *metalexp_gui_shader_source(void) {
 		"    GuiRasterOut out;\n"
 		"    out.position = projection.ProjMat * dynamicTransforms.ModelViewMat * float4(in.position, 1.0);\n"
 		"    out.color = in.color;\n"
-		"    out.uv0 = in.uv0;\n"
+		"    out.uv0 = (dynamicTransforms.TextureMat * float4(in.uv0, 0.0, 1.0)).xy;\n"
 		"    return out;\n"
 		"}\n"
 		"fragment float4 metalexp_gui_textured_fragment(GuiRasterOut in [[stage_in]], constant DynamicTransforms& dynamicTransforms [[buffer(1)]], texture2d<float> sampler0 [[texture(0)]], sampler samplerState [[sampler(0)]]) {\n"
