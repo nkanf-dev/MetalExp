@@ -1,24 +1,24 @@
 #include "metalexp_common.h"
+#include <dispatch/dispatch.h>
 
 static id<MTLCommandQueue> metalexp_shared_command_queue(void) {
 	static id<MTLDevice> cached_device = nil;
 	static id<MTLCommandQueue> cached_queue = nil;
-	if (cached_queue != nil) {
-		return cached_queue;
-	}
+	static dispatch_once_t once_token;
+	dispatch_once(&once_token, ^{
+		id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+		if (device == nil) {
+			return;
+		}
 
-	id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-	if (device == nil) {
-		return nil;
-	}
+		id<MTLCommandQueue> command_queue = [device newCommandQueue];
+		if (command_queue == nil) {
+			return;
+		}
 
-	id<MTLCommandQueue> command_queue = [device newCommandQueue];
-	if (command_queue == nil) {
-		return nil;
-	}
-
-	cached_device = device;
-	cached_queue = command_queue;
+		cached_device = device;
+		cached_queue = command_queue;
+	});
 	(void) cached_device;
 	return cached_queue;
 }

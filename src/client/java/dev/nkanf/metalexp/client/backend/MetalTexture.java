@@ -124,10 +124,6 @@ final class MetalTexture extends GpuTexture {
 		return this.mipStorage[mipLevel].duplicate().order(ByteOrder.nativeOrder());
 	}
 
-	void syncToNative(int mipLevel) {
-		syncMipToNative(mipLevel);
-	}
-
 	long nativeTextureHandle() {
 		return this.nativeTextureHandle;
 	}
