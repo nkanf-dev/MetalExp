@@ -83,7 +83,11 @@ final class MetalSurfaceBackend implements GpuSurfaceBackend {
 		}
 
 		if (metalTexture.hasNativeTextureHandle()) {
-			this.surfaceLease.blitTexture(metalTexture.nativeTextureHandle());
+			if (commandEncoderBackend instanceof MetalCommandEncoderBackend metalCommandEncoderBackend) {
+				this.surfaceLease.blitTexture(metalCommandEncoderBackend.commandContextHandle(), metalTexture.nativeTextureHandle());
+			} else {
+				this.surfaceLease.blitTexture(metalTexture.nativeTextureHandle());
+			}
 			return;
 		}
 

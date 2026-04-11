@@ -69,7 +69,7 @@ final class MetalDeviceBackend implements GpuDeviceBackend {
 
 	@Override
 	public CommandEncoderBackend createCommandEncoder() {
-		return new MetalCommandEncoderBackend();
+		return new MetalCommandEncoderBackend(this.surfaceLease);
 	}
 
 	@Override

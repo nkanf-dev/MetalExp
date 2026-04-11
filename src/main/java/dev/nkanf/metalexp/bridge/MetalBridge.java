@@ -13,6 +13,17 @@ public interface MetalBridge {
 
 	void acquireSurface(long nativeSurfaceHandle);
 
+	default long createCommandContext() {
+		throw new UnsupportedOperationException("Metal command context creation is not implemented by this bridge.");
+	}
+
+	default void submitCommandContext(long nativeCommandContextHandle) {
+		throw new UnsupportedOperationException("Metal command context submit is not implemented by this bridge.");
+	}
+
+	default void releaseCommandContext(long nativeCommandContextHandle) {
+	}
+
 	default void blitSurfaceRgba8(long nativeSurfaceHandle, ByteBuffer rgbaPixels, int width, int height) {
 		throw new UnsupportedOperationException("Metal surface blit is not implemented by this bridge.");
 	}
@@ -46,6 +57,7 @@ public interface MetalBridge {
 	}
 
 	default void drawGuiPass(
+		long nativeCommandContextHandle,
 		long nativeTargetTextureHandle,
 		int pipelineKind,
 		ByteBuffer vertexData,
@@ -70,7 +82,30 @@ public interface MetalBridge {
 		throw new UnsupportedOperationException("Metal GUI draw is not implemented by this bridge.");
 	}
 
-	default void blitSurfaceTexture(long nativeSurfaceHandle, long nativeTextureHandle) {
+	default void blitAnimatedSprite(
+		long nativeCommandContextHandle,
+		long nativeTargetTextureHandle,
+		int targetMipLevel,
+		long nativeSourceTextureHandle,
+		int sourceMipLevel,
+		int dstX,
+		int dstY,
+		int dstWidth,
+		int dstHeight,
+		float localUMin,
+		float localVMin,
+		float localUMax,
+		float localVMax,
+		float uPadding,
+		float vPadding,
+		boolean linearFiltering,
+		boolean repeatU,
+		boolean repeatV
+	) {
+		throw new UnsupportedOperationException("Metal animated sprite blit is not implemented by this bridge.");
+	}
+
+	default void blitSurfaceTexture(long nativeCommandContextHandle, long nativeSurfaceHandle, long nativeTextureHandle) {
 		throw new UnsupportedOperationException("Metal surface texture blit is not implemented by this bridge.");
 	}
 

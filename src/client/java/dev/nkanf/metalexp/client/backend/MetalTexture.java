@@ -30,7 +30,7 @@ final class MetalTexture extends GpuTexture {
 	void writeRegion(
 		ByteBuffer source,
 		int sourceBytesPerPixel,
-		int sourceWidth,
+		int sourceRowLength,
 		int mipLevel,
 		int dstX,
 		int dstY,
@@ -39,13 +39,13 @@ final class MetalTexture extends GpuTexture {
 		int srcX,
 		int srcY
 	) {
-		writeRegion(source, sourceBytesPerPixel, sourceWidth, mipLevel, 0, dstX, dstY, width, height, srcX, srcY);
+		writeRegion(source, sourceBytesPerPixel, sourceRowLength, mipLevel, 0, dstX, dstY, width, height, srcX, srcY);
 	}
 
 	void writeRegion(
 		ByteBuffer source,
 		int sourceBytesPerPixel,
-		int sourceWidth,
+		int sourceRowLength,
 		int mipLevel,
 		int dstLayer,
 		int dstX,
@@ -62,10 +62,11 @@ final class MetalTexture extends GpuTexture {
 		int mipWidth = getWidth(mipLevel);
 		int mipHeight = getHeight(mipLevel);
 		int layerStride = mipWidth * mipHeight * destinationBytesPerPixel;
+		int sourceStride = Math.max(sourceRowLength > 0 ? sourceRowLength : width, srcX + width);
 
 		for (int row = 0; row < height; row++) {
 			for (int column = 0; column < width; column++) {
-				int sourcePixelOffset = ((srcY + row) * sourceWidth + (srcX + column)) * sourceBytesPerPixel;
+				int sourcePixelOffset = ((srcY + row) * sourceStride + (srcX + column)) * sourceBytesPerPixel;
 				int destinationPixelOffset = dstLayer * layerStride + ((dstY + row) * mipWidth + (dstX + column)) * destinationBytesPerPixel;
 
 				for (int byteIndex = 0; byteIndex < destinationBytesPerPixel; byteIndex++) {

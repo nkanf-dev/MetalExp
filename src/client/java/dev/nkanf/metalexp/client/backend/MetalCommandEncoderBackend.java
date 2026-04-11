@@ -17,18 +17,25 @@ import java.util.OptionalInt;
 import java.util.function.Supplier;
 
 final class MetalCommandEncoderBackend implements CommandEncoderBackend {
+	private final MetalSurfaceLease surfaceLease;
+
+	MetalCommandEncoderBackend(MetalSurfaceLease surfaceLease) {
+		this.surfaceLease = surfaceLease;
+	}
+
 	@Override
 	public void submit() {
+		this.surfaceLease.submitPendingCommands();
 	}
 
 	@Override
 	public RenderPassBackend createRenderPass(Supplier<String> supplier, GpuTextureView gpuTextureView, OptionalInt optionalInt) {
-		return new MetalRenderPassBackend(gpuTextureView);
+		return new MetalRenderPassBackend(this, gpuTextureView);
 	}
 
 	@Override
 	public RenderPassBackend createRenderPass(Supplier<String> supplier, GpuTextureView gpuTextureView, OptionalInt optionalInt, GpuTextureView gpuTextureView1, OptionalDouble optionalDouble) {
-		return new MetalRenderPassBackend(gpuTextureView);
+		return new MetalRenderPassBackend(this, gpuTextureView);
 	}
 
 	@Override
@@ -108,5 +115,9 @@ final class MetalCommandEncoderBackend implements CommandEncoderBackend {
 
 	@Override
 	public void writeTimestamp(GpuQueryPool gpuQueryPool, int i) {
+	}
+
+	long commandContextHandle() {
+		return this.surfaceLease.acquirePendingCommandContext();
 	}
 }

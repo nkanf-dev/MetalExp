@@ -32,6 +32,8 @@ bin/
 
 run/
 logs/
+!docs/logs/
+!docs/logs/*.md
 
 # java
 
