@@ -18,7 +18,6 @@ import java.util.function.Supplier;
 
 final class MetalCommandEncoderBackend implements CommandEncoderBackend {
 	private final MetalSurfaceLease surfaceLease;
-	private long nativeCommandContextHandle;
 
 	MetalCommandEncoderBackend(MetalSurfaceLease surfaceLease) {
 		this.surfaceLease = surfaceLease;
@@ -26,16 +25,7 @@ final class MetalCommandEncoderBackend implements CommandEncoderBackend {
 
 	@Override
 	public void submit() {
-		if (this.nativeCommandContextHandle == 0L) {
-			return;
-		}
-
-		try {
-			this.surfaceLease.metalBridge().submitCommandContext(this.nativeCommandContextHandle);
-		} finally {
-			this.surfaceLease.metalBridge().releaseCommandContext(this.nativeCommandContextHandle);
-			this.nativeCommandContextHandle = 0L;
-		}
+		this.surfaceLease.submitPendingCommands();
 	}
 
 	@Override
@@ -128,10 +118,6 @@ final class MetalCommandEncoderBackend implements CommandEncoderBackend {
 	}
 
 	long commandContextHandle() {
-		if (this.nativeCommandContextHandle == 0L) {
-			this.nativeCommandContextHandle = this.surfaceLease.metalBridge().createCommandContext();
-		}
-
-		return this.nativeCommandContextHandle;
+		return this.surfaceLease.acquirePendingCommandContext();
 	}
 }

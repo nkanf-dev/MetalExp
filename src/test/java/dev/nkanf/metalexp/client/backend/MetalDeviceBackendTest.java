@@ -227,6 +227,53 @@ class MetalDeviceBackendTest {
 	}
 
 	@Test
+	void submitFromSeparateCommandEncoderFlushesPendingSurfaceBlit() throws Exception {
+		SurfaceTrackingBridge bridge = new SurfaceTrackingBridge();
+		GpuDevice device = new GpuDevice(
+			new MetalDeviceBackend(
+				bridge,
+				new MetalSurfaceDescriptor(11L, 22L, 33L, 1280, 720, 2.0D)
+			)
+		);
+		GpuSurface surface = null;
+
+		resetRenderSystemState();
+		setRenderThread(Thread.currentThread());
+		try {
+			RenderSystem.initRenderer(device);
+
+			MetalTexture colorTexture = (MetalTexture) device.createTexture("surface-color", 15, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM, 32, 32, 1, 1);
+			MetalTextureView colorTextureView = (MetalTextureView) device.createTextureView(colorTexture);
+			surface = device.createSurface(123L);
+			surface.configure(new GpuSurface.Configuration(32, 32, true));
+			surface.acquireNextTexture();
+
+			CommandEncoder blitEncoder = device.createCommandEncoder();
+			surface.blitFromTexture(blitEncoder, colorTextureView);
+			assertEquals(0, bridge.commandContextSubmitCount);
+
+			CommandEncoder submitEncoder = device.createCommandEncoder();
+			submitEncoder.submit();
+
+			assertTrue(bridge.blitCalled.get());
+			assertEquals(1, bridge.commandContextCreateCount);
+			assertEquals(1, bridge.commandContextSubmitCount);
+			assertEquals(1, bridge.commandContextReleaseCount);
+			surface.present();
+
+			colorTextureView.close();
+			colorTexture.close();
+		} finally {
+			if (surface != null) {
+				surface.close();
+			}
+
+			RenderSystem.shutdownRenderer();
+			resetRenderSystemState();
+		}
+	}
+
+	@Test
 	void supportsDynamicTextureUpload() throws Exception {
 		GpuDevice device = new GpuDevice(
 			new MetalDeviceBackend(

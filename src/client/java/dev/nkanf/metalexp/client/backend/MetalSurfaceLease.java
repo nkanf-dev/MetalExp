@@ -8,6 +8,7 @@ import java.util.Objects;
 final class MetalSurfaceLease implements AutoCloseable {
 	private final MetalBridge metalBridge;
 	private final MetalSurfaceDescriptor descriptor;
+	private long pendingCommandContextHandle;
 	private boolean closed;
 
 	MetalSurfaceLease(MetalBridge metalBridge, MetalSurfaceDescriptor descriptor) {
@@ -58,6 +59,29 @@ final class MetalSurfaceLease implements AutoCloseable {
 		this.metalBridge.blitSurfaceTexture(nativeCommandContextHandle, this.descriptor.nativeSurfaceHandle(), nativeTextureHandle);
 	}
 
+	long acquirePendingCommandContext() {
+		this.ensureOpen();
+		if (this.pendingCommandContextHandle == 0L) {
+			this.pendingCommandContextHandle = this.metalBridge.createCommandContext();
+		}
+
+		return this.pendingCommandContextHandle;
+	}
+
+	void submitPendingCommands() {
+		this.ensureOpen();
+		if (this.pendingCommandContextHandle == 0L) {
+			return;
+		}
+
+		try {
+			this.metalBridge.submitCommandContext(this.pendingCommandContextHandle);
+		} finally {
+			this.metalBridge.releaseCommandContext(this.pendingCommandContextHandle);
+			this.pendingCommandContextHandle = 0L;
+		}
+	}
+
 	void present() {
 		this.ensureOpen();
 		this.metalBridge.presentSurface(this.descriptor.nativeSurfaceHandle());
@@ -73,6 +97,10 @@ final class MetalSurfaceLease implements AutoCloseable {
 			return;
 		}
 
+		if (this.pendingCommandContextHandle != 0L) {
+			this.metalBridge.releaseCommandContext(this.pendingCommandContextHandle);
+			this.pendingCommandContextHandle = 0L;
+		}
 		this.closed = true;
 		this.metalBridge.releaseSurface(this.descriptor.nativeSurfaceHandle());
 	}
