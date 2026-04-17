@@ -193,6 +193,7 @@ static CAMetalLayer *metalexp_create_layer(NSWindow *window, NSView *view, id<MT
 	}
 
 	layer.device = device;
+	layer.opaque = YES;
 	CGFloat contents_scale = window.screen != nil ? window.screen.backingScaleFactor : 1.0;
 	if (contents_scale <= 0.0) {
 		contents_scale = 1.0;
@@ -380,6 +381,7 @@ jobject metalexp_bootstrap_surface(JNIEnv *env, jlong cocoa_window_handle, jlong
 	surface->original_layer = view.layer == nil ? NULL : (void *)CFBridgingRetain(view.layer);
 	surface->original_wants_layer = view.wantsLayer;
 	surface->current_drawable = NULL;
+	surface->current_drawable_present_scheduled = NO;
 	surface->display_sync_enabled = YES;
 
 	@try {
@@ -496,6 +498,7 @@ void metalexp_acquire_surface(jlong native_surface_handle) {
 		(void)CFBridgingRelease(surface->current_drawable);
 		surface->current_drawable = NULL;
 	}
+	surface->current_drawable_present_scheduled = NO;
 
 	id<CAMetalDrawable> drawable = [layer nextDrawable];
 	if (drawable == nil) {
@@ -505,6 +508,7 @@ void metalexp_acquire_surface(jlong native_surface_handle) {
 	}
 
 	surface->current_drawable = (void *)CFBridgingRetain(drawable);
+	surface->current_drawable_present_scheduled = NO;
 }
 
 void metalexp_present_surface(jlong native_surface_handle) {
@@ -519,10 +523,18 @@ void metalexp_present_surface(jlong native_surface_handle) {
 		return;
 	}
 
+	if (surface->current_drawable_present_scheduled) {
+		(void)CFBridgingRelease(surface->current_drawable);
+		surface->current_drawable = NULL;
+		surface->current_drawable_present_scheduled = NO;
+		return;
+	}
+
 	id<CAMetalDrawable> drawable = (__bridge id<CAMetalDrawable>)surface->current_drawable;
 	[drawable present];
 	(void)CFBridgingRelease(surface->current_drawable);
 	surface->current_drawable = NULL;
+	surface->current_drawable_present_scheduled = NO;
 }
 
 void metalexp_blit_surface_rgba8(jlong native_surface_handle, const void *pixels, jint width, jint height, jlong capacity) {
@@ -644,23 +656,7 @@ void metalexp_blit_surface_texture(jlong native_command_context_handle, jlong na
 	id<CAMetalDrawable> drawable = (__bridge id<CAMetalDrawable>)surface->current_drawable;
 	id<MTLDevice> device = source_texture.device;
 	id<MTLCommandBuffer> command_buffer = metalexp_command_buffer_for_context(native_command_context_handle, device, "surface texture blit");
-	id<MTLBlitCommandEncoder> blit_encoder = [command_buffer blitCommandEncoder];
-	if (blit_encoder == nil) {
-		@throw [NSException exceptionWithName:@"MetalExpSurfaceException"
-			reason:@"Metal surface texture blit could not allocate a command buffer or blit encoder."
-			userInfo:nil];
-	}
-
-	NSUInteger copy_width = MIN((NSUInteger)native_texture->width, drawable.texture.width);
-	NSUInteger copy_height = MIN((NSUInteger)native_texture->height, drawable.texture.height);
-	[blit_encoder copyFromTexture:source_texture
-		sourceSlice:0
-		sourceLevel:0
-		sourceOrigin:MTLOriginMake(0, 0, 0)
-		sourceSize:MTLSizeMake(copy_width, copy_height, 1)
-		toTexture:drawable.texture
-		destinationSlice:0
-		destinationLevel:0
-		destinationOrigin:MTLOriginMake(0, 0, 0)];
-	[blit_encoder endEncoding];
+	metalexp_present_texture_to_drawable(command_buffer, source_texture, drawable.texture);
+	[command_buffer presentDrawable:drawable];
+	surface->current_drawable_present_scheduled = YES;
 }

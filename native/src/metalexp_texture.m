@@ -7,7 +7,8 @@ jlong metalexp_create_texture(
 	jint mip_levels,
 	jboolean render_attachment,
 	jboolean shader_read,
-	jboolean cubemap_compatible
+	jboolean cubemap_compatible,
+	jboolean depth_texture
 ) {
 	if (width <= 0 || height <= 0 || depth_or_layers <= 0 || mip_levels <= 0) {
 		@throw [NSException exceptionWithName:@"MetalExpTextureException"
@@ -29,7 +30,7 @@ jlong metalexp_create_texture(
 	}
 
 	MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
-	descriptor.pixelFormat = MTLPixelFormatRGBA8Unorm;
+	descriptor.pixelFormat = depth_texture == JNI_TRUE ? MTLPixelFormatDepth32Float : MTLPixelFormatRGBA8Unorm;
 	descriptor.width = (NSUInteger)width;
 	descriptor.height = (NSUInteger)height;
 	descriptor.mipmapLevelCount = (NSUInteger)mip_levels;
@@ -70,6 +71,7 @@ jlong metalexp_create_texture(
 	native_texture->depth_or_layers = (uint32_t)depth_or_layers;
 	native_texture->mip_levels = (uint32_t)mip_levels;
 	native_texture->cubemap_compatible = cubemap_compatible == JNI_TRUE;
+	native_texture->depth_texture = depth_texture == JNI_TRUE;
 	return (jlong)(uintptr_t)native_texture;
 }
 
@@ -81,6 +83,11 @@ void metalexp_upload_texture_rgba8(jlong native_texture_handle, jint mip_level, 
 	}
 
 	metalexp_native_texture *native_texture = metalexp_require_texture(native_texture_handle, "upload");
+	if (native_texture->depth_texture) {
+		@throw [NSException exceptionWithName:@"MetalExpTextureException"
+			reason:@"Metal RGBA8 upload cannot target a depth texture."
+			userInfo:nil];
+	}
 	id<MTLTexture> texture = metalexp_texture_object(native_texture);
 	if (mip_level < 0 || (uint32_t)mip_level >= native_texture->mip_levels) {
 		@throw [NSException exceptionWithName:@"MetalExpTextureException"

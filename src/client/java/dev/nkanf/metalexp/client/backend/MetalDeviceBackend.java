@@ -99,12 +99,12 @@ final class MetalDeviceBackend implements GpuDeviceBackend {
 
 	@Override
 	public GpuBuffer createBuffer(Supplier<String> supplier, int i, long l) {
-		return new MetalBuffer(i, l);
+		return new MetalBuffer(this.surfaceLease.metalBridge(), i, l);
 	}
 
 	@Override
 	public GpuBuffer createBuffer(Supplier<String> supplier, int i, ByteBuffer byteBuffer) {
-		MetalBuffer buffer = new MetalBuffer(i, byteBuffer.remaining());
+		MetalBuffer buffer = new MetalBuffer(this.surfaceLease.metalBridge(), i, byteBuffer.remaining());
 		buffer.write(0L, byteBuffer.duplicate());
 		return buffer;
 	}

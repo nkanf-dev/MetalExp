@@ -34,9 +34,31 @@ static NSString *metalexp_gui_shader_source(void) {
 		"    float4 position [[position]];\n"
 		"    float3 texCoord0;\n"
 		"};\n"
+		"struct PositionTexVertexIn {\n"
+		"    float3 position [[attribute(0)]];\n"
+		"    float2 uv0 [[attribute(1)]];\n"
+		"};\n"
+		"struct PositionTexRasterOut {\n"
+		"    float4 position [[position]];\n"
+		"    float2 uv0;\n"
+		"};\n"
+		"struct PositionRasterOut {\n"
+		"    float4 position [[position]];\n"
+		"};\n"
+		"struct PostBlitRasterOut {\n"
+		"    float4 position [[position]];\n"
+		"    float2 uv0;\n"
+		"};\n"
+		"struct BlitConfig {\n"
+		"    float4 ColorModulate;\n"
+		"};\n"
+		"float4 metalexp_gl_clip_to_metal(float4 clip) {\n"
+		"    clip.z = (clip.z + clip.w) * 0.5;\n"
+		"    return clip;\n"
+		"}\n"
 		"vertex GuiRasterOut metalexp_gui_color_vertex(GuiColorVertexIn in [[stage_in]], constant DynamicTransforms& dynamicTransforms [[buffer(1)]], constant Projection& projection [[buffer(2)]]) {\n"
 		"    GuiRasterOut out;\n"
-		"    out.position = projection.ProjMat * dynamicTransforms.ModelViewMat * float4(in.position, 1.0);\n"
+		"    out.position = metalexp_gl_clip_to_metal(projection.ProjMat * dynamicTransforms.ModelViewMat * float4(in.position, 1.0));\n"
 		"    out.color = in.color;\n"
 		"    out.uv0 = float2(0.0, 0.0);\n"
 		"    return out;\n"
@@ -48,7 +70,7 @@ static NSString *metalexp_gui_shader_source(void) {
 		"}\n"
 		"vertex GuiRasterOut metalexp_gui_textured_vertex(GuiTexturedVertexIn in [[stage_in]], constant DynamicTransforms& dynamicTransforms [[buffer(1)]], constant Projection& projection [[buffer(2)]]) {\n"
 		"    GuiRasterOut out;\n"
-		"    out.position = projection.ProjMat * dynamicTransforms.ModelViewMat * float4(in.position, 1.0);\n"
+		"    out.position = metalexp_gl_clip_to_metal(projection.ProjMat * dynamicTransforms.ModelViewMat * float4(in.position, 1.0));\n"
 		"    out.color = in.color;\n"
 		"    out.uv0 = in.uv0;\n"
 		"    return out;\n"
@@ -60,12 +82,44 @@ static NSString *metalexp_gui_shader_source(void) {
 		"}\n"
 		"vertex PanoramaRasterOut metalexp_panorama_vertex(PanoramaVertexIn in [[stage_in]], constant DynamicTransforms& dynamicTransforms [[buffer(1)]], constant Projection& projection [[buffer(2)]]) {\n"
 		"    PanoramaRasterOut out;\n"
-		"    out.position = projection.ProjMat * dynamicTransforms.ModelViewMat * float4(in.position, 1.0);\n"
+		"    out.position = metalexp_gl_clip_to_metal(projection.ProjMat * dynamicTransforms.ModelViewMat * float4(in.position, 1.0));\n"
 		"    out.texCoord0 = in.position;\n"
 		"    return out;\n"
 		"}\n"
 		"fragment float4 metalexp_panorama_fragment(PanoramaRasterOut in [[stage_in]], texturecube<float> sampler0 [[texture(0)]], sampler samplerState [[sampler(0)]]) {\n"
 		"    return sampler0.sample(samplerState, in.texCoord0);\n"
+		"}\n"
+		"vertex PositionRasterOut metalexp_position_vertex(PanoramaVertexIn in [[stage_in]], constant DynamicTransforms& dynamicTransforms [[buffer(1)]], constant Projection& projection [[buffer(2)]]) {\n"
+		"    PositionRasterOut out;\n"
+		"    out.position = metalexp_gl_clip_to_metal(projection.ProjMat * dynamicTransforms.ModelViewMat * float4(in.position, 1.0));\n"
+		"    return out;\n"
+		"}\n"
+		"fragment float4 metalexp_sky_fragment(PositionRasterOut in [[stage_in]], constant DynamicTransforms& dynamicTransforms [[buffer(1)]]) {\n"
+		"    return float4(dynamicTransforms.ColorModulator.rgb, 1.0);\n"
+		"}\n"
+		"fragment float4 metalexp_stars_fragment(PositionRasterOut in [[stage_in]], constant DynamicTransforms& dynamicTransforms [[buffer(1)]]) {\n"
+		"    return dynamicTransforms.ColorModulator;\n"
+		"}\n"
+		"vertex PositionTexRasterOut metalexp_position_tex_vertex(PositionTexVertexIn in [[stage_in]], constant DynamicTransforms& dynamicTransforms [[buffer(1)]], constant Projection& projection [[buffer(2)]]) {\n"
+		"    PositionTexRasterOut out;\n"
+		"    out.position = metalexp_gl_clip_to_metal(projection.ProjMat * dynamicTransforms.ModelViewMat * float4(in.position, 1.0));\n"
+		"    out.uv0 = in.uv0;\n"
+		"    return out;\n"
+		"}\n"
+		"fragment float4 metalexp_position_tex_fragment(PositionTexRasterOut in [[stage_in]], constant DynamicTransforms& dynamicTransforms [[buffer(1)]], texture2d<float> sampler0 [[texture(0)]], sampler samplerState [[sampler(0)]]) {\n"
+		"    float4 color = sampler0.sample(samplerState, in.uv0);\n"
+		"    if (color.a == 0.0) { discard_fragment(); }\n"
+		"    return color * dynamicTransforms.ColorModulator;\n"
+		"}\n"
+		"vertex PostBlitRasterOut metalexp_post_blit_vertex(uint vertexId [[vertex_id]]) {\n"
+		"    PostBlitRasterOut out;\n"
+		"    float2 uv = float2((vertexId << 1) & 2, vertexId & 2);\n"
+		"    out.position = float4(uv * float2(2.0, 2.0) + float2(-1.0, -1.0), 0.0, 1.0);\n"
+		"    out.uv0 = uv;\n"
+		"    return out;\n"
+		"}\n"
+		"fragment float4 metalexp_post_blit_fragment(PostBlitRasterOut in [[stage_in]], constant BlitConfig& blitConfig [[buffer(1)]], texture2d<float> sampler0 [[texture(0)]], sampler samplerState [[sampler(0)]]) {\n"
+		"    return sampler0.sample(samplerState, in.uv0) * blitConfig.ColorModulate;\n"
 		"}\n";
 }
 
@@ -102,6 +156,13 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 	static id<MTLRenderPipelineState> cached_panorama_pipeline = nil;
 	static id<MTLRenderPipelineState> cached_textured_opaque_background_pipeline = nil;
 	static id<MTLRenderPipelineState> cached_textured_premultiplied_pipeline = nil;
+	static id<MTLRenderPipelineState> cached_sky_pipeline = nil;
+	static id<MTLRenderPipelineState> cached_post_blit_pipeline = nil;
+	static id<MTLRenderPipelineState> cached_vignette_pipeline = nil;
+	static id<MTLRenderPipelineState> cached_crosshair_pipeline = nil;
+	static id<MTLRenderPipelineState> cached_sunrise_sunset_pipeline = nil;
+	static id<MTLRenderPipelineState> cached_celestial_pipeline = nil;
+	static id<MTLRenderPipelineState> cached_stars_pipeline = nil;
 	if (cached_device == device) {
 		if (pipeline_kind == METALEXP_PIPELINE_GUI_COLOR && cached_color_pipeline != nil) {
 			return cached_color_pipeline;
@@ -118,6 +179,27 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 		if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA && cached_textured_premultiplied_pipeline != nil) {
 			return cached_textured_premultiplied_pipeline;
 		}
+		if (pipeline_kind == METALEXP_PIPELINE_SKY && cached_sky_pipeline != nil) {
+			return cached_sky_pipeline;
+		}
+		if (pipeline_kind == METALEXP_PIPELINE_POST_BLIT && cached_post_blit_pipeline != nil) {
+			return cached_post_blit_pipeline;
+		}
+		if (pipeline_kind == METALEXP_PIPELINE_VIGNETTE && cached_vignette_pipeline != nil) {
+			return cached_vignette_pipeline;
+		}
+		if (pipeline_kind == METALEXP_PIPELINE_CROSSHAIR && cached_crosshair_pipeline != nil) {
+			return cached_crosshair_pipeline;
+		}
+		if (pipeline_kind == METALEXP_PIPELINE_SUNRISE_SUNSET && cached_sunrise_sunset_pipeline != nil) {
+			return cached_sunrise_sunset_pipeline;
+		}
+		if (pipeline_kind == METALEXP_PIPELINE_CELESTIAL && cached_celestial_pipeline != nil) {
+			return cached_celestial_pipeline;
+		}
+		if (pipeline_kind == METALEXP_PIPELINE_STARS && cached_stars_pipeline != nil) {
+			return cached_stars_pipeline;
+		}
 	}
 
 	id<MTLLibrary> library = metalexp_gui_library(device);
@@ -125,9 +207,23 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 	NSString *fragment_name = nil;
 	if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED
 		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_OPAQUE_BACKGROUND
-		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA) {
+		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA
+		|| pipeline_kind == METALEXP_PIPELINE_VIGNETTE
+		|| pipeline_kind == METALEXP_PIPELINE_CROSSHAIR) {
 		vertex_name = @"metalexp_gui_textured_vertex";
 		fragment_name = @"metalexp_gui_textured_fragment";
+	} else if (pipeline_kind == METALEXP_PIPELINE_CELESTIAL) {
+		vertex_name = @"metalexp_position_tex_vertex";
+		fragment_name = @"metalexp_position_tex_fragment";
+	} else if (pipeline_kind == METALEXP_PIPELINE_POST_BLIT) {
+		vertex_name = @"metalexp_post_blit_vertex";
+		fragment_name = @"metalexp_post_blit_fragment";
+	} else if (pipeline_kind == METALEXP_PIPELINE_SKY) {
+		vertex_name = @"metalexp_position_vertex";
+		fragment_name = @"metalexp_sky_fragment";
+	} else if (pipeline_kind == METALEXP_PIPELINE_STARS) {
+		vertex_name = @"metalexp_position_vertex";
+		fragment_name = @"metalexp_stars_fragment";
 	} else if (pipeline_kind == METALEXP_PIPELINE_PANORAMA) {
 		vertex_name = @"metalexp_panorama_vertex";
 		fragment_name = @"metalexp_panorama_fragment";
@@ -136,13 +232,18 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 		fragment_name = @"metalexp_gui_color_fragment";
 	}
 
-	MTLVertexDescriptor *vertex_descriptor = [[MTLVertexDescriptor alloc] init];
-	vertex_descriptor.attributes[0].offset = 0;
-	vertex_descriptor.attributes[0].bufferIndex = 0;
-	vertex_descriptor.attributes[0].format = MTLVertexFormatFloat3;
+	MTLVertexDescriptor *vertex_descriptor = nil;
+	if (pipeline_kind != METALEXP_PIPELINE_POST_BLIT) {
+		vertex_descriptor = [[MTLVertexDescriptor alloc] init];
+		vertex_descriptor.attributes[0].offset = 0;
+		vertex_descriptor.attributes[0].bufferIndex = 0;
+		vertex_descriptor.attributes[0].format = MTLVertexFormatFloat3;
+	}
 	if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED
 		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_OPAQUE_BACKGROUND
-		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA) {
+		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA
+		|| pipeline_kind == METALEXP_PIPELINE_VIGNETTE
+		|| pipeline_kind == METALEXP_PIPELINE_CROSSHAIR) {
 		vertex_descriptor.attributes[1].offset = 12;
 		vertex_descriptor.attributes[1].bufferIndex = 0;
 		vertex_descriptor.attributes[1].format = MTLVertexFormatFloat2;
@@ -150,7 +251,12 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 		vertex_descriptor.attributes[2].bufferIndex = 0;
 		vertex_descriptor.attributes[2].format = MTLVertexFormatUChar4Normalized;
 		vertex_descriptor.layouts[0].stride = 24;
-	} else if (pipeline_kind == METALEXP_PIPELINE_PANORAMA) {
+	} else if (pipeline_kind == METALEXP_PIPELINE_CELESTIAL) {
+		vertex_descriptor.attributes[1].offset = 12;
+		vertex_descriptor.attributes[1].bufferIndex = 0;
+		vertex_descriptor.attributes[1].format = MTLVertexFormatFloat2;
+		vertex_descriptor.layouts[0].stride = 20;
+	} else if (pipeline_kind == METALEXP_PIPELINE_PANORAMA || pipeline_kind == METALEXP_PIPELINE_SKY || pipeline_kind == METALEXP_PIPELINE_STARS) {
 		vertex_descriptor.layouts[0].stride = 12;
 	} else {
 		vertex_descriptor.attributes[1].offset = 12;
@@ -165,8 +271,41 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 	descriptor.vertexDescriptor = vertex_descriptor;
 	descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA8Unorm;
 	if (pipeline_kind == METALEXP_PIPELINE_PANORAMA
+		|| pipeline_kind == METALEXP_PIPELINE_SKY
 		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_OPAQUE_BACKGROUND) {
 		descriptor.colorAttachments[0].blendingEnabled = NO;
+	} else if (pipeline_kind == METALEXP_PIPELINE_CELESTIAL || pipeline_kind == METALEXP_PIPELINE_STARS) {
+		descriptor.colorAttachments[0].blendingEnabled = YES;
+		descriptor.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+		descriptor.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+		descriptor.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+		descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOne;
+		descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+		descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorZero;
+	} else if (pipeline_kind == METALEXP_PIPELINE_SUNRISE_SUNSET) {
+		descriptor.colorAttachments[0].blendingEnabled = YES;
+		descriptor.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+		descriptor.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+		descriptor.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+		descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+		descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+		descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+	} else if (pipeline_kind == METALEXP_PIPELINE_VIGNETTE) {
+		descriptor.colorAttachments[0].blendingEnabled = YES;
+		descriptor.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+		descriptor.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+		descriptor.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorZero;
+		descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceColor;
+		descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorZero;
+		descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOne;
+	} else if (pipeline_kind == METALEXP_PIPELINE_CROSSHAIR) {
+		descriptor.colorAttachments[0].blendingEnabled = YES;
+		descriptor.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+		descriptor.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+		descriptor.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorOneMinusDestinationColor;
+		descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceColor;
+		descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+		descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorZero;
 	} else if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED
 		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA) {
 		descriptor.colorAttachments[0].blendingEnabled = YES;
@@ -201,8 +340,22 @@ static id<MTLRenderPipelineState> metalexp_gui_pipeline_state(id<MTLDevice> devi
 		cached_textured_opaque_background_pipeline = pipeline_state;
 	} else if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA) {
 		cached_textured_premultiplied_pipeline = pipeline_state;
+	} else if (pipeline_kind == METALEXP_PIPELINE_POST_BLIT) {
+		cached_post_blit_pipeline = pipeline_state;
+	} else if (pipeline_kind == METALEXP_PIPELINE_VIGNETTE) {
+		cached_vignette_pipeline = pipeline_state;
+	} else if (pipeline_kind == METALEXP_PIPELINE_CROSSHAIR) {
+		cached_crosshair_pipeline = pipeline_state;
+	} else if (pipeline_kind == METALEXP_PIPELINE_SUNRISE_SUNSET) {
+		cached_sunrise_sunset_pipeline = pipeline_state;
+	} else if (pipeline_kind == METALEXP_PIPELINE_CELESTIAL) {
+		cached_celestial_pipeline = pipeline_state;
+	} else if (pipeline_kind == METALEXP_PIPELINE_STARS) {
+		cached_stars_pipeline = pipeline_state;
 	} else if (pipeline_kind == METALEXP_PIPELINE_PANORAMA) {
 		cached_panorama_pipeline = pipeline_state;
+	} else if (pipeline_kind == METALEXP_PIPELINE_SKY) {
+		cached_sky_pipeline = pipeline_state;
 	} else {
 		cached_color_pipeline = pipeline_state;
 	}
@@ -219,10 +372,30 @@ id<MTLSamplerState> metalexp_sampler_state(id<MTLDevice> device, BOOL linear_fil
 	return [device newSamplerStateWithDescriptor:descriptor];
 }
 
+static MTLPrimitiveType metalexp_primitive_type(NSInteger primitive_kind) {
+	switch (primitive_kind) {
+		case METALEXP_PRIMITIVE_TRIANGLE:
+			return MTLPrimitiveTypeTriangle;
+		case METALEXP_PRIMITIVE_TRIANGLE_STRIP:
+			return MTLPrimitiveTypeTriangleStrip;
+		case METALEXP_PRIMITIVE_LINE:
+			return MTLPrimitiveTypeLine;
+		case METALEXP_PRIMITIVE_LINE_STRIP:
+			return MTLPrimitiveTypeLineStrip;
+		case METALEXP_PRIMITIVE_POINT:
+			return MTLPrimitiveTypePoint;
+		default:
+			@throw [NSException exceptionWithName:@"MetalExpDrawException"
+				reason:@"Metal GUI draw received an unsupported primitive kind."
+				userInfo:nil];
+	}
+}
+
 void metalexp_draw_gui_pass(
 	jlong native_command_context_handle,
 	jlong native_target_texture_handle,
 	jint pipeline_kind,
+	jint primitive_kind,
 	const void *vertex_bytes,
 	jlong vertex_capacity,
 	jint vertex_stride,
@@ -246,7 +419,8 @@ void metalexp_draw_gui_pass(
 	jint scissor_width,
 	jint scissor_height
 ) {
-	if (vertex_bytes == NULL || index_bytes == NULL || projection_bytes == NULL || dynamic_bytes == NULL) {
+	BOOL post_blit_pipeline = pipeline_kind == METALEXP_PIPELINE_POST_BLIT;
+	if (index_bytes == NULL || dynamic_bytes == NULL || (!post_blit_pipeline && (vertex_bytes == NULL || projection_bytes == NULL))) {
 		@throw [NSException exceptionWithName:@"MetalExpDrawException"
 			reason:@"Metal GUI draw requires direct vertex, index, projection, and transform buffers."
 			userInfo:nil];
@@ -262,11 +436,13 @@ void metalexp_draw_gui_pass(
 			userInfo:nil];
 	}
 
-	if (projection_capacity < (jlong)sizeof(metalexp_projection_uniform) || dynamic_capacity < (jlong)sizeof(metalexp_dynamic_transforms_uniform)) {
+	jlong required_projection_capacity = post_blit_pipeline ? 0L : (jlong)sizeof(metalexp_projection_uniform);
+	jlong required_dynamic_capacity = post_blit_pipeline ? (jlong)sizeof(metalexp_blit_config_uniform) : (jlong)sizeof(metalexp_dynamic_transforms_uniform);
+	if (projection_capacity < required_projection_capacity || dynamic_capacity < required_dynamic_capacity) {
 		@throw [NSException exceptionWithName:@"MetalExpDrawException"
 			reason:@"Metal GUI draw uniform buffers are smaller than the required std140 payloads."
 			userInfo:nil];
-	}
+		}
 
 	metalexp_native_texture *target_texture = metalexp_require_texture(native_target_texture_handle, "draw");
 	id<MTLTexture> texture = metalexp_texture_object(target_texture);
@@ -292,21 +468,38 @@ void metalexp_draw_gui_pass(
 	}
 
 	id<MTLRenderPipelineState> pipeline_state = metalexp_gui_pipeline_state(device, pipeline_kind);
-	id<MTLBuffer> vertex_buffer = [device newBufferWithBytes:vertex_bytes length:(NSUInteger)vertex_capacity options:MTLResourceStorageModeShared];
-	id<MTLBuffer> index_buffer = [device newBufferWithBytes:index_bytes length:(NSUInteger)index_capacity options:MTLResourceStorageModeShared];
-	id<MTLBuffer> projection_buffer = [device newBufferWithBytes:projection_bytes length:(NSUInteger)sizeof(metalexp_projection_uniform) options:MTLResourceStorageModeShared];
-	id<MTLBuffer> dynamic_buffer = [device newBufferWithBytes:dynamic_bytes length:(NSUInteger)sizeof(metalexp_dynamic_transforms_uniform) options:MTLResourceStorageModeShared];
-	if (vertex_buffer == nil || index_buffer == nil || projection_buffer == nil || dynamic_buffer == nil) {
+	id<MTLBuffer> vertex_buffer = [device newBufferWithBytesNoCopy:(void *)vertex_bytes length:(NSUInteger)vertex_capacity options:MTLResourceStorageModeShared deallocator:nil];
+	id<MTLBuffer> index_buffer = [device newBufferWithBytesNoCopy:(void *)index_bytes length:(NSUInteger)index_capacity options:MTLResourceStorageModeShared deallocator:nil];
+	metalexp_staging_buffer_slice dynamic_slice = metalexp_stage_uniform_bytes(
+		native_command_context_handle,
+		device,
+		dynamic_bytes,
+		(NSUInteger)required_dynamic_capacity,
+		post_blit_pipeline ? "post blit config stage" : "gui transform stage"
+	);
+	metalexp_staging_buffer_slice projection_slice = (metalexp_staging_buffer_slice){ .buffer = nil, .offset = 0 };
+	if (!post_blit_pipeline) {
+		projection_slice = metalexp_stage_uniform_bytes(
+			native_command_context_handle,
+			device,
+			projection_bytes,
+			(NSUInteger)sizeof(metalexp_projection_uniform),
+			"gui projection stage"
+		);
+	}
+	if (vertex_buffer == nil || index_buffer == nil) {
 		@throw [NSException exceptionWithName:@"MetalExpDrawException"
-			reason:@"Metal GUI draw could not allocate staging MTLBuffers."
+			reason:@"Metal GUI draw could not wrap direct vertex or index memory as a shared MTLBuffer."
 			userInfo:nil];
 	}
 
 	[encoder setRenderPipelineState:pipeline_state];
 	[encoder setVertexBuffer:vertex_buffer offset:0 atIndex:0];
-	[encoder setVertexBuffer:dynamic_buffer offset:0 atIndex:1];
-	[encoder setVertexBuffer:projection_buffer offset:0 atIndex:2];
-	[encoder setFragmentBuffer:dynamic_buffer offset:0 atIndex:1];
+	if (!post_blit_pipeline) {
+		[encoder setVertexBuffer:dynamic_slice.buffer offset:dynamic_slice.offset atIndex:1];
+		[encoder setVertexBuffer:projection_slice.buffer offset:projection_slice.offset atIndex:2];
+	}
+	[encoder setFragmentBuffer:dynamic_slice.buffer offset:dynamic_slice.offset atIndex:1];
 	[encoder setViewport:(MTLViewport){0.0, 0.0, (double)target_texture->width, (double)target_texture->height, 0.0, 1.0}];
 
 	if (scissor_enabled == JNI_TRUE) {
@@ -321,7 +514,11 @@ void metalexp_draw_gui_pass(
 
 	if (pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED
 		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_OPAQUE_BACKGROUND
-		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA) {
+		|| pipeline_kind == METALEXP_PIPELINE_GUI_TEXTURED_PREMULTIPLIED_ALPHA
+		|| pipeline_kind == METALEXP_PIPELINE_VIGNETTE
+		|| pipeline_kind == METALEXP_PIPELINE_CROSSHAIR
+		|| pipeline_kind == METALEXP_PIPELINE_CELESTIAL
+		|| pipeline_kind == METALEXP_PIPELINE_POST_BLIT) {
 		metalexp_native_texture *sampler0_texture = metalexp_require_texture(native_sampler0_texture_handle, "sampler0");
 		id<MTLTexture> sampler0 = metalexp_texture_object(sampler0_texture);
 		id<MTLSamplerState> sampler_state = metalexp_sampler_state(device, linear_filtering == JNI_TRUE, repeat_u == JNI_TRUE, repeat_v == JNI_TRUE);
@@ -343,7 +540,7 @@ void metalexp_draw_gui_pass(
 
 	MTLIndexType index_type = index_type_bytes == 2 ? MTLIndexTypeUInt16 : MTLIndexTypeUInt32;
 	NSUInteger index_offset = (NSUInteger)first_index * (NSUInteger)index_type_bytes;
-	[encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+	[encoder drawIndexedPrimitives:metalexp_primitive_type(primitive_kind)
 		indexCount:(NSUInteger)index_count
 		indexType:index_type
 		indexBuffer:index_buffer

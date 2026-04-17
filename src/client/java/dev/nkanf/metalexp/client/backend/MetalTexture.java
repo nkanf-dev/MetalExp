@@ -11,12 +11,16 @@ final class MetalTexture extends GpuTexture {
 	private final MetalBridge metalBridge;
 	private final ByteBuffer[] mipStorage;
 	private final long nativeTextureHandle;
+	private final float[] pendingDepthClearValues;
+	private final boolean[] pendingDepthClear;
 	private boolean closed;
 
 	MetalTexture(MetalBridge metalBridge, int usage, String label, GpuFormat format, int width, int height, int depthOrLayers, int mipLevels) {
 		super(usage, label, format, width, height, depthOrLayers, mipLevels);
 		this.metalBridge = metalBridge;
 		this.mipStorage = new ByteBuffer[mipLevels];
+		this.pendingDepthClearValues = new float[mipLevels];
+		this.pendingDepthClear = new boolean[mipLevels];
 		this.nativeTextureHandle = createNativeTextureHandle(format, width, height, depthOrLayers, mipLevels);
 
 		for (int mipLevel = 0; mipLevel < mipLevels; mipLevel++) {
@@ -120,6 +124,29 @@ final class MetalTexture extends GpuTexture {
 		syncMipToNative(mipLevel);
 	}
 
+	void fillDepth(int mipLevel, float depthValue) {
+		if (getFormat() != GpuFormat.D32_FLOAT) {
+			throw new IllegalStateException("Metal depth fill requires a D32_FLOAT texture.");
+		}
+
+		ByteBuffer destination = this.mipStorage[mipLevel].duplicate().order(ByteOrder.nativeOrder());
+		int pixelCount = getWidth(mipLevel) * getHeight(mipLevel) * getDepthOrLayers();
+		for (int pixel = 0; pixel < pixelCount; pixel++) {
+			destination.putFloat(pixel * Float.BYTES, depthValue);
+		}
+		this.pendingDepthClearValues[mipLevel] = depthValue;
+		this.pendingDepthClear[mipLevel] = true;
+	}
+
+	float consumePendingDepthClearValue(int mipLevel) {
+		if (!this.pendingDepthClear[mipLevel]) {
+			return Float.NaN;
+		}
+
+		this.pendingDepthClear[mipLevel] = false;
+		return this.pendingDepthClearValues[mipLevel];
+	}
+
 	ByteBuffer snapshotStorage(int mipLevel) {
 		return this.mipStorage[mipLevel].duplicate().order(ByteOrder.nativeOrder());
 	}
@@ -154,7 +181,7 @@ final class MetalTexture extends GpuTexture {
 	}
 
 	private long createNativeTextureHandle(GpuFormat format, int width, int height, int depthOrLayers, int mipLevels) {
-		if (this.metalBridge == null || format != GpuFormat.RGBA8_UNORM) {
+		if (this.metalBridge == null || (format != GpuFormat.RGBA8_UNORM && format != GpuFormat.D32_FLOAT)) {
 			return 0L;
 		}
 
@@ -166,7 +193,8 @@ final class MetalTexture extends GpuTexture {
 				mipLevels,
 				(usage() & USAGE_RENDER_ATTACHMENT) != 0,
 				(usage() & USAGE_TEXTURE_BINDING) != 0,
-				(usage() & USAGE_CUBEMAP_COMPATIBLE) != 0
+				(usage() & USAGE_CUBEMAP_COMPATIBLE) != 0,
+				format == GpuFormat.D32_FLOAT
 			);
 		} catch (UnsupportedOperationException | IllegalStateException error) {
 			return 0L;

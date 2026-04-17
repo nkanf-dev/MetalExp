@@ -6,12 +6,19 @@ import com.mojang.blaze3d.systems.GpuSurfaceBackend;
 import com.mojang.blaze3d.systems.SurfaceException;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.GpuFormat;
+import dev.nkanf.metalexp.MetalExpMod;
+import dev.nkanf.metalexp.bridge.MetalBridge;
 
 import java.nio.ByteBuffer;
 
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class MetalSurfaceBackend implements GpuSurfaceBackend {
+	private static final Set<Integer> PRESENT_DEBUG_SAMPLE_POINTS = Set.of(1, 2, 3, 4, 30, 60, 90, 120, 180, 240);
+	private static final Map<String, Integer> PRESENT_TEXTURE_SAMPLE_COUNTS = new ConcurrentHashMap<>();
 	private final MetalSurfaceLease surfaceLease;
 	private GpuSurface.Configuration configuration;
 	private boolean acquired;
@@ -83,6 +90,7 @@ final class MetalSurfaceBackend implements GpuSurfaceBackend {
 		}
 
 		if (metalTexture.hasNativeTextureHandle()) {
+			logPresentedTextureSample(metalTexture, gpuTextureView.baseMipLevel());
 			if (commandEncoderBackend instanceof MetalCommandEncoderBackend metalCommandEncoderBackend) {
 				this.surfaceLease.blitTexture(metalCommandEncoderBackend.commandContextHandle(), metalTexture.nativeTextureHandle());
 			} else {
@@ -136,5 +144,47 @@ final class MetalSurfaceBackend implements GpuSurfaceBackend {
 
 	boolean isClosed() {
 		return this.closed;
+	}
+
+	private static void logPresentedTextureSample(MetalTexture texture, int mipLevel) {
+		String key = texture.getLabel() + "|" + mipLevel;
+		int sampleCount = PRESENT_TEXTURE_SAMPLE_COUNTS.merge(key, 1, Integer::sum);
+		if (!PRESENT_DEBUG_SAMPLE_POINTS.contains(sampleCount)) {
+			return;
+		}
+
+		MetalBridge bridge = texture.metalBridge();
+		if (bridge == null) {
+			return;
+		}
+
+		int width = texture.getWidth(mipLevel);
+		int height = texture.getHeight(mipLevel);
+		try {
+			String center = samplePoint(bridge, texture, mipLevel, Math.max(0, width / 2), Math.max(0, height / 2));
+			String upperMiddle = samplePoint(bridge, texture, mipLevel, Math.max(0, width / 2), Math.max(0, height / 3));
+			String lowerMiddle = samplePoint(bridge, texture, mipLevel, Math.max(0, width / 2), Math.max(0, (height * 2) / 3));
+			MetalExpMod.LOGGER.info(
+				"[MetalExp][present] sampleIndex={}, sourceLabel={}, mipLevel={}, center={}, upperMiddle={}, lowerMiddle={}",
+				sampleCount,
+				texture.getLabel(),
+				mipLevel,
+				center,
+				upperMiddle,
+				lowerMiddle
+			);
+		} catch (UnsupportedOperationException | IllegalStateException exception) {
+			MetalExpMod.LOGGER.info("[MetalExp][present] sampleIndex={}, sourceLabel={}, mipLevel={}, centerSample=unavailable ({})", sampleCount, texture.getLabel(), mipLevel, exception.getMessage());
+		}
+	}
+
+	private static String samplePoint(MetalBridge bridge, MetalTexture texture, int mipLevel, int x, int y) {
+		ByteBuffer pixel = ByteBuffer.allocateDirect(4);
+		bridge.readTextureRgba8(texture.nativeTextureHandle(), mipLevel, 0, x, y, 1, 1, pixel);
+		return "@(" + x + "," + y + ")=("
+			+ Byte.toUnsignedInt(pixel.get(0)) + ","
+			+ Byte.toUnsignedInt(pixel.get(1)) + ","
+			+ Byte.toUnsignedInt(pixel.get(2)) + ","
+			+ Byte.toUnsignedInt(pixel.get(3)) + ")";
 	}
 }
